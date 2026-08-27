@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "context": { "eventType": "viewer-response" },
+  "viewer": { "ip": "198.51.100.11" },
+  "request": {
+    "method": "GET",
+    "uri": "/original",
+    "querystring": {},
+    "headers": { "host": { "value": "example.com" } },
+    "cookies": {}
+  },
+  "response": {
+    "statusCode": 200,
+    "statusDescription": "OK",
+    "headers": { "content-type": { "value": "text/plain" } },
+    "cookies": {},
+    "body": "ok"
+  }
+}

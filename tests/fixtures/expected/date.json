@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "uri": "/original",
+  "querystring": {},
+  "headers": {
+    "host": { "value": "example.com" },
+    "x-date": { "value": "0:0:Thu Jan 01 1970 00:00:00 GMT+0000 (UTC)" }
+  },
+  "cookies": {}
+}

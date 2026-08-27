@@ -1,0 +1,12 @@
+{
+  "values": {
+    "setting": { "format": "string", "value": "enabled" },
+    "settings": { "format": "json", "value": { "enabled": true } },
+    "binary": { "format": "bytes", "value": "AQID" }
+  },
+  "meta": {
+    "creationDateTime": "2024-01-01T00:00:00.000Z",
+    "lastUpdatedDateTime": "2024-01-02T00:00:00.000Z",
+    "keyCount": 3
+  }
+}

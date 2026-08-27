@@ -1,0 +1,34 @@
+[package]
+name = "cff-test"
+version = "0.1.0"
+edition = "2024"
+description = "Local compatibility checker and test runner for CloudFront Functions"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+clap = { version = "4", features = ["derive"] }
+digest = "0.11"
+llrt_buffer = "0.8.1-beta"
+md-5 = "0.11"
+num-bigint = "0.4"
+rquickjs = { version = "0.11", features = ["loader", "macro"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.11"
+sha2 = "0.11"
+swc_common = "26"
+swc_ecma_ast = "29"
+swc_ecma_parser = { version = "45", features = ["swc_ecma_visit"] }
+swc_ecma_visit = "29"
+thiserror = "2"
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
+
+[[bin]]
+name = "cff-test"
+path = "src/main.rs"
