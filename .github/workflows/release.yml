@@ -1,0 +1,157 @@
+name: Release binaries
+
+on:
+  push:
+    tags:
+      - '**'
+
+permissions:
+  contents: read
+
+env:
+  RUST_VERSION: 1.96.0
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: i686-unknown-linux-gnu
+            install_multilib: true
+          - runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+            install_multilib: false
+          - runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            install_multilib: false
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+            install_multilib: false
+          - runner: macos-15
+            target: aarch64-apple-darwin
+            install_multilib: false
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Validate tag name
+        env:
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          if [[ ! "${TAG}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "Invalid tag name: ${TAG}" >&2
+            echo "Allowed tag characters: ASCII letters, digits, '.', '_', and '-' (starting with a letter or digit)." >&2
+            exit 1
+          fi
+
+      - name: Install 32-bit Linux build dependencies
+        if: matrix.install_multilib == true
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes gcc-multilib
+
+      - name: Install Rust toolchain and target
+        env:
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          rustup toolchain install "${RUST_VERSION}" --profile minimal --no-self-update
+          rustup target add --toolchain "${RUST_VERSION}" "${TARGET}"
+
+      - name: Test
+        env:
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          cargo +"${RUST_VERSION}" test --locked --release --target "${TARGET}"
+
+      - name: Build release binary
+        env:
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          cargo +"${RUST_VERSION}" build --locked --release --target "${TARGET}" --bin cff-test
+
+      - name: Prepare release asset
+        env:
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          source="target/${TARGET}/release/cff-test"
+          destination="dist/cff-test-${TAG}-${TARGET}"
+          test -f "${source}"
+          mkdir -p dist
+          cp "${source}" "${destination}"
+
+      - name: Smoke test release asset
+        env:
+          TAG: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: |
+          "dist/cff-test-${TAG}-${TARGET}" --version
+
+      - name: Upload release asset
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/cff-test-${{ github.ref_name }}-${{ matrix.target }}
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: dist
+          merge-multiple: true
+
+      - name: Verify release assets
+        env:
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          targets=(
+            i686-unknown-linux-gnu
+            x86_64-unknown-linux-gnu
+            aarch64-unknown-linux-gnu
+            x86_64-apple-darwin
+            aarch64-apple-darwin
+          )
+
+          for target in "${targets[@]}"; do
+            test -f "dist/cff-test-${TAG}-${target}"
+          done
+
+          file_count="$(find dist -maxdepth 1 -type f | wc -l)"
+          if [[ "${file_count}" -ne 5 ]]; then
+            echo "Expected exactly 5 release assets, found ${file_count}." >&2
+            exit 1
+          fi
+
+          ls -l dist
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          gh release create "${TAG}" dist/* \
+            --repo "${GITHUB_REPOSITORY}" \
+            --verify-tag \
+            --title "${TAG}" \
+            --generate-notes
