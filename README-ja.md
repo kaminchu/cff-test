@@ -152,7 +152,7 @@ cff-test test function.js --event event.json --expected expected.json
 
 ## GitHub Actions
 
-AWS 認証情報なしで CloudFront Functions を GitHub Actions からテストできます。以下は Linux amd64 runner で release binary を使う例です。`vX.Y.Z` を実際に利用する release tag へ置き換え、`cloudfront/` 以下のファイルパスもリポジトリ構成に合わせて変更してください。version を固定しておくと、同じ revision の CI で同じ `cff-test` を利用できます。
+setup Action は runner に合う release binary をインストールし、`cff-test` を `PATH` に追加します。Linux と macOS の x64・arm64、および Linux x86 runner に対応し、AWS 認証情報は不要です。
 
 `.github/workflows/cloudfront-functions.yml`:
 
@@ -166,9 +166,6 @@ on:
 permissions:
   contents: read
 
-env:
-  CFF_TEST_VERSION: vX.Y.Z
-
 jobs:
   test:
     runs-on: ubuntu-24.04
@@ -176,25 +173,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install cff-test
-        shell: bash
-        run: |
-          asset="cff-test-${CFF_TEST_VERSION}-x86_64-unknown-linux-gnu"
-          curl --fail --location --silent --show-error \
-            --output "${RUNNER_TEMP}/cff-test" \
-            "https://github.com/kaminchu/cff-test/releases/download/${CFF_TEST_VERSION}/${asset}"
-          chmod +x "${RUNNER_TEMP}/cff-test"
+      - name: Setup cff-test
+        uses: kaminchu/cff-test/setup@v1
 
       - name: Test CloudFront Function
-        shell: bash
         run: |
-          "${RUNNER_TEMP}/cff-test" test \
+          cff-test test \
             cloudfront/function.js \
             --event cloudfront/event.json \
             --expected cloudfront/expected.json
 ```
 
-`cff-test test` は成功時に終了コード `0`、互換性違反や期待値との差異がある場合に `1` を返すため、そのまま GitHub Actions job の成功・失敗として扱えます。Linux arm64 runner などを使う場合は、[配布ファイル一覧](#github-releases-からダウンロード)に合わせて asset 名を変更してください。
+Action を `v1` のような major tag で指定すると、その major version の最新 release がインストールされます。CLI の version を個別に固定する場合は、`version` に完全な release tag を指定します。
+
+```yaml
+- uses: kaminchu/cff-test/setup@v1
+  with:
+    version: v1.0.0
+```
+
+`cff-test test` は成功時に終了コード `0`、互換性違反や期待値との差異がある場合に `1` を返すため、そのまま GitHub Actions job の成功・失敗として扱えます。
 
 ## GitLab CI
 

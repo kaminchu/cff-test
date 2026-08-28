@@ -152,7 +152,7 @@ On success, `check` prints `OK: function.js is compatible with cloudfront-js-2.0
 
 ## GitHub Actions
 
-Test CloudFront Functions in GitHub Actions without AWS credentials. This example uses a release binary on a Linux amd64 runner. Replace `vX.Y.Z` with the release tag you want to use, and adjust the file paths under `cloudfront/` to match your repository layout. Pinning the version ensures that the same `cff-test` version is used for CI runs on the same revision.
+The setup action installs the appropriate release binary for the runner and adds `cff-test` to `PATH`. It supports Linux and macOS runners on x64 and arm64, as well as Linux x86. No AWS credentials are required.
 
 `.github/workflows/cloudfront-functions.yml`:
 
@@ -166,9 +166,6 @@ on:
 permissions:
   contents: read
 
-env:
-  CFF_TEST_VERSION: vX.Y.Z
-
 jobs:
   test:
     runs-on: ubuntu-24.04
@@ -176,25 +173,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install cff-test
-        shell: bash
-        run: |
-          asset="cff-test-${CFF_TEST_VERSION}-x86_64-unknown-linux-gnu"
-          curl --fail --location --silent --show-error \
-            --output "${RUNNER_TEMP}/cff-test" \
-            "https://github.com/kaminchu/cff-test/releases/download/${CFF_TEST_VERSION}/${asset}"
-          chmod +x "${RUNNER_TEMP}/cff-test"
+      - name: Setup cff-test
+        uses: kaminchu/cff-test/setup@v1
 
       - name: Test CloudFront Function
-        shell: bash
         run: |
-          "${RUNNER_TEMP}/cff-test" test \
+          cff-test test \
             cloudfront/function.js \
             --event cloudfront/event.json \
             --expected cloudfront/expected.json
 ```
 
-`cff-test test` exits with code `0` on success and `1` when it detects a compatibility violation or a difference from the expected value, so the result can be used directly as the GitHub Actions job status. When using a Linux arm64 runner or another platform, change the asset name to match the [list of release assets](#download-from-github-releases).
+When the action is referenced by a major tag such as `v1`, it installs the newest release in that major version. To pin the CLI independently, set `version` to a full release tag:
+
+```yaml
+- uses: kaminchu/cff-test/setup@v1
+  with:
+    version: v1.0.0
+```
+
+`cff-test test` exits with code `0` on success and `1` when it detects a compatibility violation or a difference from the expected value, so the result can be used directly as the GitHub Actions job status.
 
 ## GitLab CI
 
