@@ -1,47 +1,47 @@
 # cff-test
 
-`cff-test` は、CloudFront Functions JavaScript runtime 2.0 の viewer request / viewer response 関数をローカルで検証する Rust 製 CLI です。AWS へ接続せずに、互換性の静的検査、関数の実行、期待する JSON との比較を行えます。
+`cff-test` is a Rust CLI for locally testing viewer request and viewer response functions for the CloudFront Functions JavaScript runtime 2.0. Without connecting to AWS, you can statically check compatibility, run functions, and compare their results against expected JSON.
 
-QuickJS と対応する組み込み module は実行ファイルへ内包されるため、実行時に Node.js は必要ありません。
+QuickJS and the supported built-in modules are embedded in the executable, so Node.js is not required at runtime.
 
 > [!WARNING]
-> `cff-test` の capability 制限は、信頼できる関数コードの互換性テストを目的としています。信頼できない JavaScript を安全に実行するためのセキュリティ sandbox ではありません。
+> The capability restrictions in `cff-test` are intended for compatibility testing of trusted function code. They are not a security sandbox for safely executing untrusted JavaScript.
 
-## モチベーション
+## Motivation
 
-CloudFront Functions は短いコードでも配信時の viewer request / viewer response に直接影響します。一方、変更のたびに AWS へデプロイして確認する方法では、フィードバックを得るまでに時間がかかり、開発環境や CI に AWS へのアクセス権限も必要になります。
+Even short CloudFront Functions directly affect viewer requests and viewer responses during content delivery. However, deploying every change to AWS for testing slows down feedback and requires both development environments and CI systems to have AWS access.
 
-`cff-test` は、関数コード、入力 event、期待する戻り値をリポジトリで一緒に管理し、通常のアプリケーションコードと同じ感覚でローカルや CI からテストするために作られました。pull request の段階で互換性違反や意図しない挙動を検出し、AWS へデプロイする前のフィードバックを短くすることを目指しています。
+`cff-test` was created so that function code, input events, and expected results can be kept together in a repository and tested locally or in CI just like regular application code. It aims to detect compatibility violations and unintended behavior at the pull request stage, shortening the feedback loop before deployment to AWS.
 
-AWS 上での最終確認を置き換えるのではなく、日々の変更を気軽に繰り返し検証できる、高速で再現可能なテスト層を提供します。
+It does not replace final verification on AWS. Instead, it provides a fast and reproducible test layer for repeatedly validating day-to-day changes.
 
-## 主な機能
+## Features
 
-- CloudFront Functions runtime 2.0 で利用できない構文、global、module、member を実行前に診断
-- viewer request / viewer response event と handler の戻り値を検証
-- 関数の戻り値を整形済み JSON として出力
-- 期待値との差分を JSON Pointer 単位で表示
-- `crypto`、`querystring`、ローカル KVS fixture を使う `cloudfront` module に対応
-- `--now-ms` による `Date` の再現可能な固定
-- AWS 認証情報、ネットワーク接続、Node.js が不要
+- Diagnoses syntax, globals, modules, and members unavailable in CloudFront Functions runtime 2.0 before execution
+- Validates viewer request and viewer response events and handler return values
+- Prints function return values as formatted JSON
+- Displays differences from expected values by JSON Pointer
+- Supports `crypto`, `querystring`, and the `cloudfront` module backed by a local KVS fixture
+- Reproducibly freezes `Date` with `--now-ms`
+- Requires no AWS credentials, network connection, or Node.js
 
-対応範囲の詳細は [互換性ドキュメント](docs/compatibility.md) を参照してください。
+See the [compatibility documentation](docs/compatibility.md) for details about the supported scope.
 
-## インストール
+## Installation
 
-### GitHub Releases からダウンロード
+### Download from GitHub Releases
 
-[GitHub Releases](https://github.com/kaminchu/cff-test/releases) では、tag ごとに次の実行ファイルを配布します。ファイル名の `<TAG>` は、例えば `v0.1.0` です。
+[GitHub Releases](https://github.com/kaminchu/cff-test/releases) provides the following executables for each tag. For example, `<TAG>` in the filenames may be `v0.1.0`.
 
-| 環境 | release asset |
+| Platform | Release asset |
 | --- | --- |
-| Linux x86（32-bit） | `cff-test-<TAG>-i686-unknown-linux-gnu` |
+| Linux x86 (32-bit) | `cff-test-<TAG>-i686-unknown-linux-gnu` |
 | Linux amd64 | `cff-test-<TAG>-x86_64-unknown-linux-gnu` |
 | Linux arm64 | `cff-test-<TAG>-aarch64-unknown-linux-gnu` |
 | macOS Intel | `cff-test-<TAG>-x86_64-apple-darwin` |
 | macOS Apple Silicon | `cff-test-<TAG>-aarch64-apple-darwin` |
 
-ダウンロードしたファイルには、必要に応じて実行権限を付け、`PATH` の通った場所へ配置してください。Linux amd64 の例:
+Make the downloaded file executable if necessary and place it in a directory on your `PATH`. For example, on Linux amd64:
 
 ```sh
 chmod +x cff-test-v0.1.0-x86_64-unknown-linux-gnu
@@ -49,11 +49,11 @@ mkdir -p "$HOME/.local/bin"
 install -m 0755 cff-test-v0.1.0-x86_64-unknown-linux-gnu "$HOME/.local/bin/cff-test"
 ```
 
-配布ファイルは archive ではなく単一の実行ファイルです。macOS 向けバイナリのコード署名と notarization は行っていません。
+Each release asset is a single executable, not an archive. The macOS binaries are not code-signed or notarized.
 
-### ソースコードからビルド
+### Build from source
 
-Rust toolchain と対象 platform の C/C++ build toolchain が必要です。release build と同じ Rust 1.96.0 を使う場合:
+You need a Rust toolchain and the C/C++ build toolchain for your target platform. To use Rust 1.96.0, the same version used for release builds:
 
 ```sh
 git clone https://github.com/kaminchu/cff-test.git
@@ -62,11 +62,11 @@ rustup toolchain install 1.96.0 --profile minimal
 cargo +1.96.0 build --locked --release
 ```
 
-生成される実行ファイルは `target/release/cff-test` です。
+The generated executable is `target/release/cff-test`.
 
-## クイックスタート
+## Quick start
 
-URI を書き換える viewer request 関数を例に、静的検査、実行、期待値との比較を行います。
+This example uses a viewer request function that rewrites a URI to demonstrate static checking, execution, and comparison against an expected value.
 
 `function.js`:
 
@@ -107,21 +107,21 @@ function handler(event) {
 ```
 
 ```sh
-# runtime 2.0 との互換性を静的検査
+# Statically check compatibility with runtime 2.0
 cff-test check function.js
 
-# 関数を実行し、戻り値を標準出力へ表示
+# Run the function and print its return value to standard output
 cff-test run function.js --input event.json
 
-# 戻り値を expected.json と比較
+# Compare the return value with expected.json
 cff-test test function.js --input event.json --output expected.json
 ```
 
-成功時、`check` は `OK: function.js is compatible with cloudfront-js-2.0`、`test` は `PASS: function.js` を出力します。
+On success, `check` prints `OK: function.js is compatible with cloudfront-js-2.0`, and `test` prints `PASS: function.js`.
 
-## CI での利用例
+## CI examples
 
-以下は Linux amd64 runner で release binary を使う例です。`vX.Y.Z` を実際に利用する release tag へ置き換え、`cloudfront/` 以下のファイルパスもリポジトリ構成に合わせて変更してください。versionを固定しておくと、同じ revision の CI で同じ `cff-test` を利用できます。
+The following examples use a release binary on a Linux amd64 runner. Replace `vX.Y.Z` with the release tag you want to use, and adjust the file paths under `cloudfront/` to match your repository layout. Pinning the version ensures that the same `cff-test` version is used for CI runs on the same revision.
 
 ### GitHub Actions
 
@@ -192,9 +192,9 @@ cloudfront-functions:
       --output cloudfront/expected.json
 ```
 
-`cff-test test` は成功時に終了コード `0`、互換性違反や期待値との差異がある場合に `1` を返すため、そのまま CI job の成功・失敗として扱えます。Linux arm64 runner などを使う場合は、[配布ファイル一覧](#github-releases-からダウンロード)に合わせて asset 名を変更してください。
+`cff-test test` exits with code `0` on success and `1` when it detects a compatibility violation or a difference from the expected value, so the result can be used directly as the CI job status. When using a Linux arm64 runner or another platform, change the asset name to match the [list of release assets](#download-from-github-releases).
 
-## コマンド
+## Commands
 
 ```text
 cff-test check <FUNCTION>
@@ -203,36 +203,36 @@ cff-test test <FUNCTION> -i <EVENT> -o <EXPECTED> [--kvs <KVS>] [--now-ms <MILLI
 cff-test <FUNCTION> -i <EVENT> -o <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
 ```
 
-| コマンド | 動作 |
+| Command | Behavior |
 | --- | --- |
-| `check` | 関数コードを静的検査します。event は実行しません。 |
-| `run` | event を使って関数を実行し、戻り値 JSON を標準出力へ出します。 |
-| `test` | 関数の戻り値と期待値 JSON を比較します。 |
-| command 省略 | `test` と同じ動作です。 |
+| `check` | Statically checks the function code without executing an event. |
+| `run` | Runs the function with an event and prints the returned JSON to standard output. |
+| `test` | Compares the function's return value with the expected JSON. |
+| Command omitted | Behaves the same as `test`. |
 
-`FUNCTION` は UTF-8 の JavaScript ファイル、`EVENT` と `EXPECTED` は UTF-8 の JSON ファイルです。`EVENT` には CloudFront Functions event version `1.0` を、`EXPECTED` には handler が返す request または response を指定します。
+`FUNCTION` is a UTF-8 JavaScript file, while `EVENT` and `EXPECTED` are UTF-8 JSON files. Specify CloudFront Functions event version `1.0` in `EVENT`, and the request or response returned by the handler in `EXPECTED`.
 
-`console.log()` の内容と診断・エラーは標準エラー出力へ出るため、`run` の標準出力は JSON として別のコマンドへ渡せます。
+Because `console.log()` output, diagnostics, and errors are written to standard error, the standard output from `run` can be piped to another command as JSON.
 
-### 終了コード
+### Exit codes
 
-| code | 意味 |
+| Code | Meaning |
 | --- | --- |
-| `0` | 検査、実行、比較に成功 |
-| `1` | 互換性、event、実行、戻り値、比較のエラー |
-| `2` | CLI の使い方、ファイル I/O、JSON 構文のエラー |
+| `0` | The check, execution, or comparison succeeded |
+| `1` | Compatibility, event, execution, return value, or comparison error |
+| `2` | CLI usage, file I/O, or JSON syntax error |
 
-### 時刻を固定する
+### Freeze time
 
-`--now-ms` に Unix epoch からのミリ秒を指定すると、invocation 中の `Date` がその時刻に固定されます。時刻に依存する関数を再現可能にテストするときに使用します。
+When `--now-ms` is given a time in milliseconds since the Unix epoch, `Date` is frozen at that time for the duration of the invocation. Use this option to reproducibly test time-dependent functions.
 
 ```sh
 cff-test test function.js -i event.json -o expected.json --now-ms 0
 ```
 
-## ローカル KVS fixture
+## Local KVS fixture
 
-`--kvs` には次の形式の UTF-8 JSON を渡します。`bytes` の value は standard base64 です。
+Pass `--kvs` a UTF-8 JSON file in the following format. The value of `bytes` must use standard Base64 encoding.
 
 ```json
 {
@@ -249,7 +249,7 @@ cff-test test function.js -i event.json -o expected.json --now-ms 0
 }
 ```
 
-関数からは `cloudfront` module を介して読み取ります。
+Read the fixture from the function through the `cloudfront` module.
 
 ```js
 import cf from "cloudfront";
@@ -266,30 +266,30 @@ async function handler(event) {
 cff-test run function.js -i event.json --kvs kvs.json
 ```
 
-KVS fixture は read-only です。`get()`、`exists()`、`meta()` に対応します。
+KVS fixtures are read-only. The `get()`, `exists()`, and `meta()` methods are supported.
 
-## 対応範囲と制約
+## Supported scope and limitations
 
-対象は runtime 2.0 の viewer request / viewer response と event version `1.0` です。対応 module は `crypto`、`querystring`、ローカル fixture の `cloudfront` です。関数コードは UTF-8 byte 長 10 KiB 以下でなければなりません。
+`cff-test` targets viewer request and viewer response functions on runtime 2.0 using event version `1.0`. Supported modules are `crypto`, `querystring`, and `cloudfront` backed by a local fixture. Function code must be no larger than 10 KiB in UTF-8 bytes.
 
-QuickJS の実行には local safety limit（64 MiB、約1秒、512 KiB stack）を適用します。ただし、AWS の ComputeUtilization、実 engine の性能・内部挙動、完全一致するエラー文は再現しません。
+QuickJS execution is subject to local safety limits: 64 MiB of memory, approximately one second of execution time, and a 512 KiB stack. However, `cff-test` does not reproduce AWS ComputeUtilization, the performance or internal behavior of the production engine, or identical error messages.
 
-runtime 1.0、Connection Functions、Lambda@Edge、`cloudfront.cwt`、ネットワーク、ファイルシステム、npm/local file module は対象外です。組み込み global の allowlist、JavaScript 構文、既知の差異を含む一覧は [docs/compatibility.md](docs/compatibility.md) にまとめています。
+Runtime 1.0, Connection Functions, Lambda@Edge, `cloudfront.cwt`, networking, file system access, and npm or local file modules are outside the supported scope. See [docs/compatibility.md](docs/compatibility.md) for the complete list, including the built-in global allowlist, JavaScript syntax support, and known differences.
 
-## 開発
+## Development
 
-ローカルで全テストを実行します。
+Run the full test suite locally:
 
 ```sh
 cargo test --locked
 ```
 
-release binary を作る場合:
+To build a release binary:
 
 ```sh
 cargo build --locked --release
 ```
 
-## ライセンス
+## License
 
 [MIT License](LICENSE)
