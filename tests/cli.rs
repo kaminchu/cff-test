@@ -9,6 +9,18 @@ fn cff() -> Command {
 }
 
 #[test]
+fn version_exits_successfully() {
+    cff()
+        .arg("--version")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(concat!(
+            "cff-test ",
+            env!("CARGO_PKG_VERSION")
+        )));
+}
+
+#[test]
 fn check_reports_success_and_restricted_global() {
     cff()
         .args(["check", "tests/fixtures/functions/rewrite.js"])
