@@ -1,0 +1,10 @@
+{
+  "statusCode": 302,
+  "statusDescription": "Found",
+  "headers": {
+    "content-type": { "value": "text/plain" },
+    "location": { "value": "/new" }
+  },
+  "cookies": {},
+  "body": "ok"
+}

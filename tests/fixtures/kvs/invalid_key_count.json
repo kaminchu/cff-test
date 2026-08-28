@@ -1,0 +1,8 @@
+{
+  "values": { "setting": { "format": "string", "value": "enabled" } },
+  "meta": {
+    "creationDateTime": "2024-01-01T00:00:00.000Z",
+    "lastUpdatedDateTime": "2024-01-02T00:00:00.000Z",
+    "keyCount": 2
+  }
+}

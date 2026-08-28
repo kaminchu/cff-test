@@ -1,0 +1,10 @@
+{
+  "method": "GET",
+  "uri": "/original",
+  "querystring": {},
+  "headers": {
+    "host": { "value": "example.com" },
+    "x-text": { "value": "あ:3" }
+  },
+  "cookies": {}
+}

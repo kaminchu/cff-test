@@ -1,0 +1,12 @@
+{
+  "method": "GET",
+  "uri": "/original",
+  "querystring": {},
+  "headers": {
+    "host": { "value": "example.com" },
+    "x-hash": { "value": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824" },
+    "x-bytes": { "value": "AQID" },
+    "x-hmac": { "value": "f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8" }
+  },
+  "cookies": {}
+}

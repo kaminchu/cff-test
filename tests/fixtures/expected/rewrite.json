@@ -1,0 +1,7 @@
+{
+  "method": "GET",
+  "uri": "/rewritten",
+  "querystring": {},
+  "headers": { "host": { "value": "example.com" } },
+  "cookies": {}
+}

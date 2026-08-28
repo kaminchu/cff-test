@@ -1,0 +1,13 @@
+{
+  "method": "GET",
+  "uri": "/original",
+  "querystring": {},
+  "headers": {
+    "host": { "value": "example.com" },
+    "x-settings": { "value": "{\"enabled\":true}" },
+    "x-binary": { "value": "AQID" },
+    "x-missing": { "value": "false" },
+    "x-count": { "value": "3" }
+  },
+  "cookies": {}
+}
