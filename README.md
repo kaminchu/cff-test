@@ -1,16 +1,200 @@
 # cff-test
 
-`cff-test` は、CloudFront Functions JavaScript runtime 2.0 の viewer request / viewer response 関数を、AWS へ接続せずに静的検査・実行・JSON 比較する Rust CLI です。QuickJS と対応する組み込み module は実行ファイルへ内包されます。
+`cff-test` is a Rust CLI for locally testing viewer request and viewer response functions for the CloudFront Functions JavaScript runtime 2.0. Without connecting to AWS, you can statically check compatibility, run functions, and compare their results against expected JSON.
 
-## Build
+QuickJS and the supported built-in modules are embedded in the executable, so Node.js is not required at runtime.
+
+> [!WARNING]
+> The capability restrictions in `cff-test` are intended for compatibility testing of trusted function code. They are not a security sandbox for safely executing untrusted JavaScript.
+
+## Motivation
+
+Even short CloudFront Functions directly affect viewer requests and viewer responses during content delivery. However, deploying every change to AWS for testing slows down feedback and requires both development environments and CI systems to have AWS access.
+
+`cff-test` was created so that function code, input events, and expected results can be kept together in a repository and tested locally or in CI just like regular application code. It aims to detect compatibility violations and unintended behavior at the pull request stage, shortening the feedback loop before deployment to AWS.
+
+It does not replace final verification on AWS. Instead, it provides a fast and reproducible test layer for repeatedly validating day-to-day changes.
+
+## Features
+
+- Diagnoses syntax, globals, modules, and members unavailable in CloudFront Functions runtime 2.0 before execution
+- Validates viewer request and viewer response events and handler return values
+- Prints function return values as formatted JSON
+- Displays differences from expected values by JSON Pointer
+- Supports `crypto`, `querystring`, and the `cloudfront` module backed by a local KVS fixture
+- Reproducibly freezes `Date` with `--now-ms`
+- Requires no AWS credentials, network connection, or Node.js
+
+See the [compatibility documentation](docs/compatibility.md) for details about the supported scope.
+
+## Installation
+
+### Download from GitHub Releases
+
+[GitHub Releases](https://github.com/kaminchu/cff-test/releases) provides the following executables for each tag. For example, `<TAG>` in the filenames may be `v0.1.0`.
+
+| Platform | Release asset |
+| --- | --- |
+| Linux x86 (32-bit) | `cff-test-<TAG>-i686-unknown-linux-gnu` |
+| Linux amd64 | `cff-test-<TAG>-x86_64-unknown-linux-gnu` |
+| Linux arm64 | `cff-test-<TAG>-aarch64-unknown-linux-gnu` |
+| macOS Intel | `cff-test-<TAG>-x86_64-apple-darwin` |
+| macOS Apple Silicon | `cff-test-<TAG>-aarch64-apple-darwin` |
+
+Make the downloaded file executable if necessary and place it in a directory on your `PATH`. For example, on Linux amd64:
 
 ```sh
-cargo build --release
+chmod +x cff-test-v0.1.0-x86_64-unknown-linux-gnu
+mkdir -p "$HOME/.local/bin"
+install -m 0755 cff-test-v0.1.0-x86_64-unknown-linux-gnu "$HOME/.local/bin/cff-test"
 ```
 
-Linux x86_64 で検証しています。`cff-test` は信頼できるコードの互換性テストを目的とした capability 制限であり、信頼できない JavaScript 用のセキュリティ sandbox ではありません。
+Each release asset is a single executable, not an archive. The macOS binaries are not code-signed or notarized.
 
-## Usage
+### Build from source
+
+You need a Rust toolchain and the C/C++ build toolchain for your target platform. To use Rust 1.96.0, the same version used for release builds:
+
+```sh
+git clone https://github.com/kaminchu/cff-test.git
+cd cff-test
+rustup toolchain install 1.96.0 --profile minimal
+cargo +1.96.0 build --locked --release
+```
+
+The generated executable is `target/release/cff-test`.
+
+## Quick start
+
+This example uses a viewer request function that rewrites a URI to demonstrate static checking, execution, and comparison against an expected value.
+
+`function.js`:
+
+```js
+function handler(event) {
+  event.request.uri = "/rewritten";
+  return event.request;
+}
+```
+
+`event.json`:
+
+```json
+{
+  "version": "1.0",
+  "context": { "eventType": "viewer-request" },
+  "viewer": { "ip": "198.51.100.11" },
+  "request": {
+    "method": "GET",
+    "uri": "/original",
+    "querystring": {},
+    "headers": { "host": { "value": "example.com" } },
+    "cookies": {}
+  }
+}
+```
+
+`expected.json`:
+
+```json
+{
+  "method": "GET",
+  "uri": "/rewritten",
+  "querystring": {},
+  "headers": { "host": { "value": "example.com" } },
+  "cookies": {}
+}
+```
+
+```sh
+# Statically check compatibility with runtime 2.0
+cff-test check function.js
+
+# Run the function and print its return value to standard output
+cff-test run function.js --input event.json
+
+# Compare the return value with expected.json
+cff-test test function.js --input event.json --output expected.json
+```
+
+On success, `check` prints `OK: function.js is compatible with cloudfront-js-2.0`, and `test` prints `PASS: function.js`.
+
+## CI examples
+
+The following examples use a release binary on a Linux amd64 runner. Replace `vX.Y.Z` with the release tag you want to use, and adjust the file paths under `cloudfront/` to match your repository layout. Pinning the version ensures that the same `cff-test` version is used for CI runs on the same revision.
+
+### GitHub Actions
+
+`.github/workflows/cloudfront-functions.yml`:
+
+```yaml
+name: Test CloudFront Functions
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CFF_TEST_VERSION: vX.Y.Z
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install cff-test
+        shell: bash
+        run: |
+          asset="cff-test-${CFF_TEST_VERSION}-x86_64-unknown-linux-gnu"
+          curl --fail --location --silent --show-error \
+            --output "${RUNNER_TEMP}/cff-test" \
+            "https://github.com/kaminchu/cff-test/releases/download/${CFF_TEST_VERSION}/${asset}"
+          chmod +x "${RUNNER_TEMP}/cff-test"
+
+      - name: Test CloudFront Function
+        shell: bash
+        run: |
+          "${RUNNER_TEMP}/cff-test" test \
+            cloudfront/function.js \
+            --input cloudfront/event.json \
+            --output cloudfront/expected.json
+```
+
+### GitLab CI
+
+`.gitlab-ci.yml`:
+
+```yaml
+variables:
+  CFF_TEST_VERSION: "vX.Y.Z"
+
+cloudfront-functions:
+  image: ubuntu:24.04
+  before_script:
+    - apt-get update
+    - apt-get install --yes --no-install-recommends ca-certificates curl
+    - |
+      asset="cff-test-${CFF_TEST_VERSION}-x86_64-unknown-linux-gnu"
+      curl --fail --location --silent --show-error \
+        --output ./cff-test \
+        "https://github.com/kaminchu/cff-test/releases/download/${CFF_TEST_VERSION}/${asset}"
+      chmod +x ./cff-test
+  script:
+    - >-
+      ./cff-test test
+      cloudfront/function.js
+      --input cloudfront/event.json
+      --output cloudfront/expected.json
+```
+
+`cff-test test` exits with code `0` on success and `1` when it detects a compatibility violation or a difference from the expected value, so the result can be used directly as the CI job status. When using a Linux arm64 runner or another platform, change the asset name to match the [list of release assets](#download-from-github-releases).
+
+## Commands
 
 ```text
 cff-test check <FUNCTION>
@@ -19,19 +203,36 @@ cff-test test <FUNCTION> -i <EVENT> -o <EXPECTED> [--kvs <KVS>] [--now-ms <MILLI
 cff-test <FUNCTION> -i <EVENT> -o <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
 ```
 
-`check` は互換性診断を標準エラー出力へ出します。`run` は戻り値 JSON を標準出力へ出し、`test` は JSON Pointer 単位で比較します。`console.log()` は標準エラー出力へ出ます。
+| Command | Behavior |
+| --- | --- |
+| `check` | Statically checks the function code without executing an event. |
+| `run` | Runs the function with an event and prints the returned JSON to standard output. |
+| `test` | Compares the function's return value with the expected JSON. |
+| Command omitted | Behaves the same as `test`. |
+
+`FUNCTION` is a UTF-8 JavaScript file, while `EVENT` and `EXPECTED` are UTF-8 JSON files. Specify CloudFront Functions event version `1.0` in `EVENT`, and the request or response returned by the handler in `EXPECTED`.
+
+Because `console.log()` output, diagnostics, and errors are written to standard error, the standard output from `run` can be piped to another command as JSON.
+
+### Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | The check, execution, or comparison succeeded |
+| `1` | Compatibility, event, execution, return value, or comparison error |
+| `2` | CLI usage, file I/O, or JSON syntax error |
+
+### Freeze time
+
+When `--now-ms` is given a time in milliseconds since the Unix epoch, `Date` is frozen at that time for the duration of the invocation. Use this option to reproducibly test time-dependent functions.
 
 ```sh
-cargo run -- check src/function.js
-cargo run -- run src/function.js -i event.json --now-ms 0
-cargo run -- test src/function.js -i event.json -o expected.json
+cff-test test function.js -i event.json -o expected.json --now-ms 0
 ```
-
-終了コードは、成功が `0`、関数の互換性・イベント・実行・比較エラーが `1`、CLI・ファイル I/O・JSON 構文エラーが `2` です。
 
 ## Local KVS fixture
 
-`--kvs` には次の形式の UTF-8 JSON を渡します。`bytes` の value は standard base64 です。
+Pass `--kvs` a UTF-8 JSON file in the following format. The value of `bytes` must use standard Base64 encoding.
 
 ```json
 {
@@ -48,8 +249,11 @@ cargo run -- test src/function.js -i event.json -o expected.json
 }
 ```
 
+Read the fixture from the function through the `cloudfront` module.
+
 ```js
 import cf from "cloudfront";
+
 const kvs = cf.kvs();
 
 async function handler(event) {
@@ -58,10 +262,34 @@ async function handler(event) {
 }
 ```
 
-## Scope and restrictions
+```sh
+cff-test run function.js -i event.json --kvs kvs.json
+```
 
-対象は runtime 2.0 の viewer request / viewer response と event version `1.0` です。対応 module は `crypto`、`querystring`、ローカル fixture の `cloudfront` です。関数コードは UTF-8 byte 長 10 KiB 以下でなければなりません。
+KVS fixtures are read-only. The `get()`, `exists()`, and `meta()` methods are supported.
 
-`Date` の現在時刻は invocation 中に固定され、`--now-ms` で指定できます。KVS は read-only fixture です。AWS の ComputeUtilization、実エンジンの性能・内部挙動、完全一致するエラー文、runtime 1.0、Connection Functions、`cloudfront.cwt`、ネットワーク、ファイルシステムは再現しません。
+## Supported scope and limitations
 
-組み込み global の allowlist と既知の差異は [docs/compatibility.md](docs/compatibility.md) にまとめています。
+`cff-test` targets viewer request and viewer response functions on runtime 2.0 using event version `1.0`. Supported modules are `crypto`, `querystring`, and `cloudfront` backed by a local fixture. Function code must be no larger than 10 KiB in UTF-8 bytes.
+
+QuickJS execution is subject to local safety limits: 64 MiB of memory, approximately one second of execution time, and a 512 KiB stack. However, `cff-test` does not reproduce AWS ComputeUtilization, the performance or internal behavior of the production engine, or identical error messages.
+
+Runtime 1.0, Connection Functions, Lambda@Edge, `cloudfront.cwt`, networking, file system access, and npm or local file modules are outside the supported scope. See [docs/compatibility.md](docs/compatibility.md) for the complete list, including the built-in global allowlist, JavaScript syntax support, and known differences.
+
+## Development
+
+Run the full test suite locally:
+
+```sh
+cargo test --locked
+```
+
+To build a release binary:
+
+```sh
+cargo build --locked --release
+```
+
+## License
+
+[MIT License](LICENSE)
