@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, error::ErrorKind};
 
 use crate::error::{AppError, AppResult};
 
@@ -49,7 +49,13 @@ pub struct Cli {
 
 impl Cli {
     pub fn parse_args() -> AppResult<Self> {
-        let raw = RawCli::try_parse().map_err(|error| AppError::Usage(error.to_string()))?;
+        let raw = match RawCli::try_parse() {
+            Ok(raw) => raw,
+            Err(error) => match error.kind() {
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => error.exit(),
+                _ => return Err(AppError::Usage(error.to_string())),
+            },
+        };
         let (command, function) = match (raw.target.as_str(), raw.function) {
             ("check", Some(function)) => (Command::Check, function),
             ("run", Some(function)) => (Command::Run, function),
