@@ -21,6 +21,37 @@ fn version_exits_successfully() {
 }
 
 #[test]
+fn legacy_input_and_output_options_are_rejected() {
+    for option in ["-i", "--input"] {
+        cff()
+            .args([
+                "run",
+                "tests/fixtures/functions/rewrite.js",
+                option,
+                "tests/fixtures/events/request.json",
+            ])
+            .assert()
+            .code(2)
+            .stderr(predicate::str::contains("unexpected argument"));
+    }
+
+    for option in ["-o", "--output"] {
+        cff()
+            .args([
+                "test",
+                "tests/fixtures/functions/rewrite.js",
+                "--event",
+                "tests/fixtures/events/request.json",
+                option,
+                "tests/fixtures/expected/rewrite.json",
+            ])
+            .assert()
+            .code(2)
+            .stderr(predicate::str::contains("unexpected argument"));
+    }
+}
+
+#[test]
 fn check_reports_success_and_restricted_global() {
     cff()
         .args(["check", "tests/fixtures/functions/rewrite.js"])
@@ -40,7 +71,7 @@ fn run_and_test_keep_json_on_stdout() {
         .args([
             "run",
             "tests/fixtures/functions/rewrite.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
         ])
         .assert()
@@ -50,9 +81,9 @@ fn run_and_test_keep_json_on_stdout() {
         .args([
             "test",
             "tests/fixtures/functions/rewrite.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
-            "-o",
+            "--expected",
             "tests/fixtures/expected/rewrite.json",
         ])
         .assert()
@@ -61,9 +92,9 @@ fn run_and_test_keep_json_on_stdout() {
     cff()
         .args([
             "tests/fixtures/functions/rewrite.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
-            "-o",
+            "--expected",
             "tests/fixtures/expected/rewrite.json",
         ])
         .assert()
@@ -77,9 +108,9 @@ fn modules_date_kvs_and_limits_work() {
         .args([
             "test",
             "tests/fixtures/functions/crypto_rewrite.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
-            "-o",
+            "--expected",
             "tests/fixtures/expected/crypto_rewrite.json",
         ])
         .assert()
@@ -88,9 +119,9 @@ fn modules_date_kvs_and_limits_work() {
         .args([
             "test",
             "tests/fixtures/functions/querystring_rewrite.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
-            "-o",
+            "--expected",
             "tests/fixtures/expected/querystring_rewrite.json",
         ])
         .assert()
@@ -99,9 +130,9 @@ fn modules_date_kvs_and_limits_work() {
         .args([
             "test",
             "tests/fixtures/functions/kvs.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
-            "-o",
+            "--expected",
             "tests/fixtures/expected/kvs.json",
             "--kvs",
             "tests/fixtures/kvs/local.json",
@@ -112,7 +143,7 @@ fn modules_date_kvs_and_limits_work() {
         .args([
             "run",
             "tests/fixtures/functions/date.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
             "--now-ms",
             "0",
@@ -124,9 +155,9 @@ fn modules_date_kvs_and_limits_work() {
         .args([
             "test",
             "tests/fixtures/functions/response.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/response.json",
-            "-o",
+            "--expected",
             "tests/fixtures/expected/response.json",
         ])
         .assert()
@@ -135,9 +166,9 @@ fn modules_date_kvs_and_limits_work() {
         .args([
             "test",
             "tests/fixtures/functions/buffer_crypto.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
-            "-o",
+            "--expected",
             "tests/fixtures/expected/buffer_crypto.json",
         ])
         .assert()
@@ -146,9 +177,9 @@ fn modules_date_kvs_and_limits_work() {
         .args([
             "test",
             "tests/fixtures/functions/text_encoding.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
-            "-o",
+            "--expected",
             "tests/fixtures/expected/text_encoding.json",
         ])
         .assert()
@@ -157,9 +188,9 @@ fn modules_date_kvs_and_limits_work() {
         .args([
             "test",
             "tests/fixtures/functions/kvs_all.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
-            "-o",
+            "--expected",
             "tests/fixtures/expected/kvs_all.json",
             "--kvs",
             "tests/fixtures/kvs/local.json",
@@ -170,7 +201,7 @@ fn modules_date_kvs_and_limits_work() {
         .args([
             "run",
             "tests/fixtures/functions/infinite.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
         ])
         .assert()
@@ -189,7 +220,7 @@ fn event_and_return_models_reject_invalid_shapes() {
             .args([
                 "run",
                 "tests/fixtures/functions/rewrite.js",
-                "-i",
+                "--event",
                 &format!("tests/fixtures/events/{event}"),
             ])
             .assert()
@@ -200,7 +231,7 @@ fn event_and_return_models_reject_invalid_shapes() {
         .args([
             "run",
             "tests/fixtures/functions/invalid_return_header.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
         ])
         .assert()
@@ -210,7 +241,7 @@ fn event_and_return_models_reject_invalid_shapes() {
         .args([
             "run",
             "tests/fixtures/functions/changes_method.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
         ])
         .assert()
@@ -248,7 +279,7 @@ fn serialization_and_kvs_fixture_errors_are_classified() {
             .args([
                 "run",
                 &format!("tests/fixtures/functions/{function}"),
-                "-i",
+                "--event",
                 "tests/fixtures/events/request.json",
             ])
             .assert()
@@ -259,7 +290,7 @@ fn serialization_and_kvs_fixture_errors_are_classified() {
         .args([
             "run",
             "tests/fixtures/functions/kvs.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
         ])
         .assert()
@@ -271,7 +302,7 @@ fn serialization_and_kvs_fixture_errors_are_classified() {
         .args([
             "run",
             "tests/fixtures/functions/kvs.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
             "--kvs",
             "tests/fixtures/kvs/invalid_key_count.json",
@@ -313,9 +344,9 @@ fn assertion_and_unsupported_feature_are_diagnostics() {
         .args([
             "test",
             "tests/fixtures/functions/rewrite.js",
-            "-i",
+            "--event",
             "tests/fixtures/events/request.json",
-            "-o",
+            "--expected",
             "tests/fixtures/expected/mismatch.json",
         ])
         .assert()

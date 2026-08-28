@@ -111,10 +111,10 @@ function handler(event) {
 cff-test check function.js
 
 # 関数を実行し、戻り値を標準出力へ表示
-cff-test run function.js --input event.json
+cff-test run function.js --event event.json
 
 # 戻り値を expected.json と比較
-cff-test test function.js --input event.json --output expected.json
+cff-test test function.js --event event.json --expected expected.json
 ```
 
 成功時、`check` は `OK: function.js is compatible with cloudfront-js-2.0`、`test` は `PASS: function.js` を出力します。
@@ -161,8 +161,8 @@ jobs:
         run: |
           "${RUNNER_TEMP}/cff-test" test \
             cloudfront/function.js \
-            --input cloudfront/event.json \
-            --output cloudfront/expected.json
+            --event cloudfront/event.json \
+            --expected cloudfront/expected.json
 ```
 
 ### GitLab CI
@@ -188,8 +188,8 @@ cloudfront-functions:
     - >-
       ./cff-test test
       cloudfront/function.js
-      --input cloudfront/event.json
-      --output cloudfront/expected.json
+      --event cloudfront/event.json
+      --expected cloudfront/expected.json
 ```
 
 `cff-test test` は成功時に終了コード `0`、互換性違反や期待値との差異がある場合に `1` を返すため、そのまま CI job の成功・失敗として扱えます。Linux arm64 runner などを使う場合は、[配布ファイル一覧](#github-releases-からダウンロード)に合わせて asset 名を変更してください。
@@ -198,9 +198,9 @@ cloudfront-functions:
 
 ```text
 cff-test check <FUNCTION>
-cff-test run <FUNCTION> -i <EVENT> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
-cff-test test <FUNCTION> -i <EVENT> -o <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
-cff-test <FUNCTION> -i <EVENT> -o <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
+cff-test run <FUNCTION> --event <EVENT> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
+cff-test test <FUNCTION> --event <EVENT> --expected <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
+cff-test <FUNCTION> --event <EVENT> --expected <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
 ```
 
 | コマンド | 動作 |
@@ -227,7 +227,7 @@ cff-test <FUNCTION> -i <EVENT> -o <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECON
 `--now-ms` に Unix epoch からのミリ秒を指定すると、invocation 中の `Date` がその時刻に固定されます。時刻に依存する関数を再現可能にテストするときに使用します。
 
 ```sh
-cff-test test function.js -i event.json -o expected.json --now-ms 0
+cff-test test function.js --event event.json --expected expected.json --now-ms 0
 ```
 
 ## ローカル KVS fixture
@@ -263,7 +263,7 @@ async function handler(event) {
 ```
 
 ```sh
-cff-test run function.js -i event.json --kvs kvs.json
+cff-test run function.js --event event.json --kvs kvs.json
 ```
 
 KVS fixture は read-only です。`get()`、`exists()`、`meta()` に対応します。
