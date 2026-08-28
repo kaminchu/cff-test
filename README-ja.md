@@ -1,6 +1,14 @@
 # cff-test
 
-`cff-test` は、CloudFront Functions JavaScript runtime 2.0 の viewer request / viewer response 関数をローカルで検証する Rust 製 CLI です。AWS へ接続せずに、互換性の静的検査、関数の実行、期待する JSON との比較を行えます。
+CloudFront resource をデプロイしたり AWS 認証情報を設定したりせずに、AWS CloudFront Functions をローカルや CI からテストできます。
+
+`cff-test` は、CloudFront Functions JavaScript runtime 2.0 の viewer request / viewer response 関数に対応するオフラインテスト runner です。
+
+- AWS account や認証情報が不要
+- CloudFront Function resource が不要
+- GitHub Actions などの CI 環境で利用可能
+- CloudFront Functions runtime との互換性を検証
+- CloudFront KeyValueStore fixture に対応
 
 QuickJS と対応する組み込み module は実行ファイルへ内包されるため、実行時に Node.js は必要ありません。
 
@@ -14,6 +22,29 @@ CloudFront Functions は短いコードでも配信時の viewer request / viewe
 `cff-test` は、関数コード、入力 event、期待する戻り値をリポジトリで一緒に管理し、通常のアプリケーションコードと同じ感覚でローカルや CI からテストするために作られました。pull request の段階で互換性違反や意図しない挙動を検出し、AWS へデプロイする前のフィードバックを短くすることを目指しています。
 
 AWS 上での最終確認を置き換えるのではなく、日々の変更を気軽に繰り返し検証できる、高速で再現可能なテスト層を提供します。
+
+## 比較
+
+| | `cff-test` | AWS `test-function` | Node.js unit test |
+| --- | --- | --- | --- |
+| AWS account と認証情報 | 不要 | 必要 | 不要 |
+| CloudFront Function resource | 不要 | 必要 | 不要 |
+| オフライン実行 | 可能 | 不可 | 可能 |
+| Runtime 互換性検査 | あり | Native runtime で実行 | なし |
+| KeyValueStore のテスト | ローカル fixture | 関連付けた KVS | Mock が必要 |
+| GitHub Actions での利用 | 可能 | 可能 | 可能 |
+
+## `aws cloudfront test-function` ではなく cff-test を使う理由
+
+AWS の [`test-function`](https://docs.aws.amazon.com/cloudfront/latest/APIReference/API_TestFunction.html) は、既存の CloudFront Function を AWS 上で実行します。Native runtime での検証に適していますが、CloudFront Function resource、AWS 認証情報、ネットワーク接続が必要です。
+
+`cff-test` は、AWS resource を作成・更新するより前の段階での利用を想定しています。
+
+```text
+pull request -> cff-test -> merge -> AWS function を更新 -> AWS test-function -> publish
+```
+
+ローカルや CI での高速かつ繰り返し可能なフィードバックには `cff-test` を使い、native runtime 上の挙動を確認するときは AWS でテストしてください。
 
 ## 主な機能
 
@@ -119,11 +150,9 @@ cff-test test function.js --event event.json --expected expected.json
 
 成功時、`check` は `OK: function.js is compatible with cloudfront-js-2.0`、`test` は `PASS: function.js` を出力します。
 
-## CI での利用例
+## GitHub Actions
 
-以下は Linux amd64 runner で release binary を使う例です。`vX.Y.Z` を実際に利用する release tag へ置き換え、`cloudfront/` 以下のファイルパスもリポジトリ構成に合わせて変更してください。versionを固定しておくと、同じ revision の CI で同じ `cff-test` を利用できます。
-
-### GitHub Actions
+setup Action は runner に合う release binary をインストールし、`cff-test` を `PATH` に追加します。Linux と macOS の x64・arm64、および Linux x86 runner に対応し、AWS 認証情報は不要です。
 
 `.github/workflows/cloudfront-functions.yml`:
 
@@ -137,9 +166,6 @@ on:
 permissions:
   contents: read
 
-env:
-  CFF_TEST_VERSION: vX.Y.Z
-
 jobs:
   test:
     runs-on: ubuntu-24.04
@@ -147,25 +173,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install cff-test
-        shell: bash
-        run: |
-          asset="cff-test-${CFF_TEST_VERSION}-x86_64-unknown-linux-gnu"
-          curl --fail --location --silent --show-error \
-            --output "${RUNNER_TEMP}/cff-test" \
-            "https://github.com/kaminchu/cff-test/releases/download/${CFF_TEST_VERSION}/${asset}"
-          chmod +x "${RUNNER_TEMP}/cff-test"
+      - name: Setup cff-test
+        uses: kaminchu/cff-test/setup@v1
 
       - name: Test CloudFront Function
-        shell: bash
         run: |
-          "${RUNNER_TEMP}/cff-test" test \
+          cff-test test \
             cloudfront/function.js \
             --event cloudfront/event.json \
             --expected cloudfront/expected.json
 ```
 
-### GitLab CI
+Action を `v1` のような major tag で指定すると、その major version の最新 release がインストールされます。CLI の version を個別に固定する場合は、`version` に完全な release tag を指定します。
+
+```yaml
+- uses: kaminchu/cff-test/setup@v1
+  with:
+    version: v1.0.0
+```
+
+`cff-test test` は成功時に終了コード `0`、互換性違反や期待値との差異がある場合に `1` を返すため、そのまま GitHub Actions job の成功・失敗として扱えます。
+
+## GitLab CI
+
+以下は Linux amd64 runner で release binary を使い、CloudFront Functions を GitLab CI からテストする例です。`vX.Y.Z` を実際に利用する release tag へ置き換え、`cloudfront/` 以下のファイルパスもリポジトリ構成に合わせて変更してください。
 
 `.gitlab-ci.yml`:
 
@@ -192,7 +223,7 @@ cloudfront-functions:
       --expected cloudfront/expected.json
 ```
 
-`cff-test test` は成功時に終了コード `0`、互換性違反や期待値との差異がある場合に `1` を返すため、そのまま CI job の成功・失敗として扱えます。Linux arm64 runner などを使う場合は、[配布ファイル一覧](#github-releases-からダウンロード)に合わせて asset 名を変更してください。
+`cff-test test` は成功時に終了コード `0`、互換性違反や期待値との差異がある場合に `1` を返すため、そのまま GitLab CI job の成功・失敗として扱えます。Linux arm64 runner などを使う場合は、[配布ファイル一覧](#github-releases-からダウンロード)に合わせて asset 名を変更してください。
 
 ## コマンド
 

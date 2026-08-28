@@ -1,0 +1,19 @@
+name: Setup cff-test
+description: Install cff-test from GitHub Releases and add it to PATH
+
+inputs:
+  version:
+    description: Release tag to install (for example, v1.0.0)
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install cff-test
+      shell: bash
+      env:
+        CFF_TEST_ACTION_REF: ${{ github.action_ref }}
+        CFF_TEST_VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: "${GITHUB_ACTION_PATH}/install.sh"
