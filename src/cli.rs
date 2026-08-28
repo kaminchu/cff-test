@@ -17,11 +17,11 @@ struct RawCli {
     #[arg(value_name = "FUNCTION", requires = "target")]
     function: Option<PathBuf>,
 
-    #[arg(short = 'i', long = "input", value_name = "EVENT")]
-    input: Option<PathBuf>,
+    #[arg(long = "event", value_name = "EVENT")]
+    event: Option<PathBuf>,
 
-    #[arg(short = 'o', long = "output", value_name = "EXPECTED")]
-    output: Option<PathBuf>,
+    #[arg(long = "expected", value_name = "EXPECTED")]
+    expected: Option<PathBuf>,
 
     #[arg(long = "kvs", value_name = "KVS")]
     kvs: Option<PathBuf>,
@@ -41,8 +41,8 @@ pub enum Command {
 pub struct Cli {
     pub command: Command,
     pub function: PathBuf,
-    pub input: Option<PathBuf>,
-    pub output: Option<PathBuf>,
+    pub event: Option<PathBuf>,
+    pub expected: Option<PathBuf>,
     pub kvs: Option<PathBuf>,
     pub now_ms: Option<i64>,
 }
@@ -76,8 +76,8 @@ impl Cli {
 
         match command {
             Command::Check => {
-                if raw.input.is_some()
-                    || raw.output.is_some()
+                if raw.event.is_some()
+                    || raw.expected.is_some()
                     || raw.kvs.is_some()
                     || raw.now_ms.is_some()
                 {
@@ -85,19 +85,19 @@ impl Cli {
                 }
             }
             Command::Run => {
-                if raw.input.is_none() {
-                    return Err(AppError::Usage("run requires --input".into()));
+                if raw.event.is_none() {
+                    return Err(AppError::Usage("run requires --event".into()));
                 }
-                if raw.output.is_some() {
-                    return Err(AppError::Usage("run does not accept --output".into()));
+                if raw.expected.is_some() {
+                    return Err(AppError::Usage("run does not accept --expected".into()));
                 }
             }
             Command::Test => {
-                if raw.input.is_none() {
-                    return Err(AppError::Usage("test requires --input".into()));
+                if raw.event.is_none() {
+                    return Err(AppError::Usage("test requires --event".into()));
                 }
-                if raw.output.is_none() {
-                    return Err(AppError::Usage("test requires --output".into()));
+                if raw.expected.is_none() {
+                    return Err(AppError::Usage("test requires --expected".into()));
                 }
             }
         }
@@ -105,8 +105,8 @@ impl Cli {
         Ok(Self {
             command,
             function,
-            input: raw.input,
-            output: raw.output,
+            event: raw.event,
+            expected: raw.expected,
             kvs: raw.kvs,
             now_ms: raw.now_ms,
         })

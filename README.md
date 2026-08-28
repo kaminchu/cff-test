@@ -111,10 +111,10 @@ function handler(event) {
 cff-test check function.js
 
 # Run the function and print its return value to standard output
-cff-test run function.js --input event.json
+cff-test run function.js --event event.json
 
 # Compare the return value with expected.json
-cff-test test function.js --input event.json --output expected.json
+cff-test test function.js --event event.json --expected expected.json
 ```
 
 On success, `check` prints `OK: function.js is compatible with cloudfront-js-2.0`, and `test` prints `PASS: function.js`.
@@ -161,8 +161,8 @@ jobs:
         run: |
           "${RUNNER_TEMP}/cff-test" test \
             cloudfront/function.js \
-            --input cloudfront/event.json \
-            --output cloudfront/expected.json
+            --event cloudfront/event.json \
+            --expected cloudfront/expected.json
 ```
 
 ### GitLab CI
@@ -188,8 +188,8 @@ cloudfront-functions:
     - >-
       ./cff-test test
       cloudfront/function.js
-      --input cloudfront/event.json
-      --output cloudfront/expected.json
+      --event cloudfront/event.json
+      --expected cloudfront/expected.json
 ```
 
 `cff-test test` exits with code `0` on success and `1` when it detects a compatibility violation or a difference from the expected value, so the result can be used directly as the CI job status. When using a Linux arm64 runner or another platform, change the asset name to match the [list of release assets](#download-from-github-releases).
@@ -198,9 +198,9 @@ cloudfront-functions:
 
 ```text
 cff-test check <FUNCTION>
-cff-test run <FUNCTION> -i <EVENT> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
-cff-test test <FUNCTION> -i <EVENT> -o <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
-cff-test <FUNCTION> -i <EVENT> -o <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
+cff-test run <FUNCTION> --event <EVENT> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
+cff-test test <FUNCTION> --event <EVENT> --expected <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
+cff-test <FUNCTION> --event <EVENT> --expected <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
 ```
 
 | Command | Behavior |
@@ -227,7 +227,7 @@ Because `console.log()` output, diagnostics, and errors are written to standard 
 When `--now-ms` is given a time in milliseconds since the Unix epoch, `Date` is frozen at that time for the duration of the invocation. Use this option to reproducibly test time-dependent functions.
 
 ```sh
-cff-test test function.js -i event.json -o expected.json --now-ms 0
+cff-test test function.js --event event.json --expected expected.json --now-ms 0
 ```
 
 ## Local KVS fixture
@@ -263,7 +263,7 @@ async function handler(event) {
 ```
 
 ```sh
-cff-test run function.js -i event.json --kvs kvs.json
+cff-test run function.js --event event.json --kvs kvs.json
 ```
 
 KVS fixtures are read-only. The `get()`, `exists()`, and `meta()` methods are supported.

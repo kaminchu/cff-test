@@ -23,8 +23,8 @@ pub fn run(cli: Cli) -> AppResult<()> {
         return Ok(());
     }
 
-    let input_path = cli.input.as_ref().expect("CLI validation ensures input");
-    let event = read_json(input_path)?;
+    let event_path = cli.event.as_ref().expect("CLI validation ensures event");
+    let event = read_json(event_path)?;
     validate_event(&event).map_err(AppError::EventValidation)?;
 
     let kvs = cli
@@ -55,8 +55,11 @@ pub fn run(cli: Cli) -> AppResult<()> {
             );
         }
         Command::Test => {
-            let output_path = cli.output.as_ref().expect("CLI validation ensures output");
-            let expected = read_json(output_path)?;
+            let expected_path = cli
+                .expected
+                .as_ref()
+                .expect("CLI validation ensures expected value");
+            let expected = read_json(expected_path)?;
             assert_json_equal(&expected, &actual).map_err(AppError::Assertion)?;
             println!("PASS: {}", cli.function.display());
         }
