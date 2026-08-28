@@ -26,13 +26,13 @@ tagが `v0.1.0` の場合、GitHub Releaseに次の5ファイルが存在する�
 
 | 要件上の環境 | runner | Rust target | release asset名 |
 | --- | --- | --- | --- |
-| Linux x86 | `ubuntu-24.04` | `i686-unknown-linux-gnu` | `cff-test-v0.1.0-linux-x86` |
-| Linux amd64 | `ubuntu-24.04` | `x86_64-unknown-linux-gnu` | `cff-test-v0.1.0-linux-amd64` |
-| Linux arm64 | `ubuntu-24.04-arm` | `aarch64-unknown-linux-gnu` | `cff-test-v0.1.0-linux-arm64` |
-| macOS Intel | `macos-15-intel` | `x86_64-apple-darwin` | `cff-test-v0.1.0-macos-intel` |
-| macOS Apple Silicon | `macos-15` | `aarch64-apple-darwin` | `cff-test-v0.1.0-macos-apple-silicon` |
+| Linux x86 | `ubuntu-24.04` | `i686-unknown-linux-gnu` | `cff-test-v0.1.0-i686-unknown-linux-gnu` |
+| Linux amd64 | `ubuntu-24.04` | `x86_64-unknown-linux-gnu` | `cff-test-v0.1.0-x86_64-unknown-linux-gnu` |
+| Linux arm64 | `ubuntu-24.04-arm` | `aarch64-unknown-linux-gnu` | `cff-test-v0.1.0-aarch64-unknown-linux-gnu` |
+| macOS Intel | `macos-15-intel` | `x86_64-apple-darwin` | `cff-test-v0.1.0-x86_64-apple-darwin` |
+| macOS Apple Silicon | `macos-15` | `aarch64-apple-darwin` | `cff-test-v0.1.0-aarch64-apple-darwin` |
 
-一般形は `cff-test-${TAG}-${PLATFORM}` とし、`${TAG}` には `github.ref_name` を一切加工せず使用する。`${PLATFORM}` は表のasset名末尾にある `linux-x86` などの固定値とする。
+一般形は `cff-test-${TAG}-${TARGET}` とし、`${TAG}` には `github.ref_name` を一切加工せず使用する。`${TARGET}` にはbuildに使用したRust target tripleを一切加工せず使用する。
 
 ## 4. 変更対象
 
@@ -54,7 +54,7 @@ workflow名は `Release binaries` とする。
 
 ### 5.1 matrix
 
-`strategy.fail-fast: false` とし、1 targetの失敗時にも他targetの結果を確認できるようにする。`matrix.include` の各要素は、少なくとも次の4フィールドを持たせる。
+`strategy.fail-fast: false` とし、1 targetの失敗時にも他targetの結果を確認できるようにする。`matrix.include` の各要素は、次の3フィールドを持たせる。
 
 ```yaml
 strategy:
@@ -63,23 +63,18 @@ strategy:
     include:
       - runner: ubuntu-24.04
         target: i686-unknown-linux-gnu
-        platform: linux-x86
         install_multilib: true
       - runner: ubuntu-24.04
         target: x86_64-unknown-linux-gnu
-        platform: linux-amd64
         install_multilib: false
       - runner: ubuntu-24.04-arm
         target: aarch64-unknown-linux-gnu
-        platform: linux-arm64
         install_multilib: false
       - runner: macos-15-intel
         target: x86_64-apple-darwin
-        platform: macos-intel
         install_multilib: false
       - runner: macos-15
         target: aarch64-apple-darwin
-        platform: macos-apple-silicon
         install_multilib: false
 runs-on: ${{ matrix.runner }}
 ```
@@ -116,17 +111,17 @@ macOSの2行を含め、すべてのstepは明示的に `shell: bash` を使え�
    ```bash
    cargo +1.96.0 build --locked --release --target "${TARGET}" --bin cff-test
    ```
-7. `dist` directoryを作り、`target/${TARGET}/release/cff-test` を `dist/cff-test-${TAG}-${PLATFORM}` へcopyする。sourceをmoveせず、想定したbinaryが存在しなければstepを失敗させる。`TAG` と `PLATFORM` はstepの `env` で渡し、すべて二重引用符で囲む。
+7. `dist` directoryを作り、`target/${TARGET}/release/cff-test` を `dist/cff-test-${TAG}-${TARGET}` へcopyする。sourceをmoveせず、想定したbinaryが存在しなければstepを失敗させる。`TAG` と `TARGET` はstepの `env` で渡し、すべて二重引用符で囲む。
 8. rename後の配布binaryを、その生成元runner上でsmoke testする。
 
    ```bash
-   "dist/cff-test-${TAG}-${PLATFORM}" --version
+   "dist/cff-test-${TAG}-${TARGET}" --version
    ```
 
    stdoutに対する脆い完全一致判定は追加せず、exit code 0だけを確認する。機能テストは直前の `cargo test` が担う。
 9. `actions/upload-artifact@v7` で、rename済みbinaryをjob間artifactとしてuploadする。
-   - artifact名: `release-${{ matrix.platform }}`
-   - path: `dist/cff-test-${{ github.ref_name }}-${{ matrix.platform }}`
+   - artifact名: `release-${{ matrix.target }}`
+   - path: `dist/cff-test-${{ github.ref_name }}-${{ matrix.target }}`
    - `if-no-files-found: error`
    - 各matrix jobが異なるartifact名を持つようにし、並列uploadの衝突を避ける。
    - ここで作るActions artifactはjob間受け渡し用であり、最終的な配布先ではない。
@@ -206,7 +201,7 @@ env:
 
 jobs:
   build:
-    name: Build ${{ matrix.platform }}
+    name: Build ${{ matrix.target }}
     strategy: # 5 targetのinclude matrix
     runs-on: ${{ matrix.runner }}
     steps:
@@ -277,7 +272,7 @@ cargo test --locked
 5. 5 build jobの成功後にだけrelease jobが開始する。
 6. tagと同名のpublished GitHub Releaseが作成される。
 7. Release Assetsが「3. 生成物の仕様」に記載した5ファイルだけである。
-8. 各assetのファイル名にtag名が無加工で含まれる。
+8. 各assetのファイル名にtag名とbuildに使用したRust target tripleが無加工で含まれる。
 9. 少なくとも各対応OS/architectureでassetをdownloadし、必要なら `chmod +x` 後、`./<asset-name> --version` がexit code 0になる。
 
 ### 9.3 受け入れ条件
@@ -288,7 +283,7 @@ cargo test --locked
 - tag pushから5 targetのbuildとtestが行われる。
 - 5 targetのうち1つでも失敗した場合、GitHub Releaseは作成されない。
 - 全target成功時、tagと同名のGitHub Releaseが作成される。
-- Releaseに5つのraw binaryが添付され、名前が規定どおりでtag名を含む。
+- Releaseに5つのraw binaryが添付され、名前が規定どおりでtag名とRust target tripleを含む。
 - workflowで長期PATや追加secretを必要としない。
 - Rust source、manifest、既存テストの変更を伴わない。
 
