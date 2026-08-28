@@ -1,6 +1,14 @@
 # cff-test
 
-`cff-test` is a Rust CLI for locally testing viewer request and viewer response functions for the CloudFront Functions JavaScript runtime 2.0. Without connecting to AWS, you can statically check compatibility, run functions, and compare their results against expected JSON.
+Test AWS CloudFront Functions locally and in CI without deploying CloudFront resources or configuring AWS credentials.
+
+`cff-test` is an offline test runner for viewer request and viewer response functions using the CloudFront Functions JavaScript runtime 2.0.
+
+- No AWS account or credentials required
+- No CloudFront Function resource required
+- Works in GitHub Actions and other CI environments
+- Validates CloudFront Functions runtime compatibility
+- Supports CloudFront KeyValueStore fixtures
 
 QuickJS and the supported built-in modules are embedded in the executable, so Node.js is not required at runtime.
 
@@ -14,6 +22,29 @@ Even short CloudFront Functions directly affect viewer requests and viewer respo
 `cff-test` was created so that function code, input events, and expected results can be kept together in a repository and tested locally or in CI just like regular application code. It aims to detect compatibility violations and unintended behavior at the pull request stage, shortening the feedback loop before deployment to AWS.
 
 It does not replace final verification on AWS. Instead, it provides a fast and reproducible test layer for repeatedly validating day-to-day changes.
+
+## Comparison
+
+| | `cff-test` | AWS `test-function` | Node.js unit tests |
+| --- | --- | --- | --- |
+| AWS account and credentials required | No | Yes | No |
+| CloudFront Function resource required | No | Yes | No |
+| Works offline | Yes | No | Yes |
+| Runtime compatibility checks | Yes | Runs on the native runtime | No |
+| KeyValueStore testing | Local fixture | Associated KVS | Mock required |
+| GitHub Actions support | Yes | Yes | Yes |
+
+## Why cff-test instead of `aws cloudfront test-function`?
+
+AWS [`test-function`](https://docs.aws.amazon.com/cloudfront/latest/APIReference/API_TestFunction.html) runs an existing CloudFront Function on AWS. It is useful for verification on the native runtime, but it requires a CloudFront Function resource, AWS credentials, and network access.
+
+`cff-test` is intended for the earlier stage, before creating or updating AWS resources:
+
+```text
+pull request -> cff-test -> merge -> update AWS function -> AWS test-function -> publish
+```
+
+Use `cff-test` for fast, repeatable local and CI feedback, then use AWS testing when you need to verify behavior on the native runtime.
 
 ## Features
 
@@ -119,11 +150,9 @@ cff-test test function.js --event event.json --expected expected.json
 
 On success, `check` prints `OK: function.js is compatible with cloudfront-js-2.0`, and `test` prints `PASS: function.js`.
 
-## CI examples
+## GitHub Actions
 
-The following examples use a release binary on a Linux amd64 runner. Replace `vX.Y.Z` with the release tag you want to use, and adjust the file paths under `cloudfront/` to match your repository layout. Pinning the version ensures that the same `cff-test` version is used for CI runs on the same revision.
-
-### GitHub Actions
+Test CloudFront Functions in GitHub Actions without AWS credentials. This example uses a release binary on a Linux amd64 runner. Replace `vX.Y.Z` with the release tag you want to use, and adjust the file paths under `cloudfront/` to match your repository layout. Pinning the version ensures that the same `cff-test` version is used for CI runs on the same revision.
 
 `.github/workflows/cloudfront-functions.yml`:
 
@@ -165,7 +194,11 @@ jobs:
             --expected cloudfront/expected.json
 ```
 
-### GitLab CI
+`cff-test test` exits with code `0` on success and `1` when it detects a compatibility violation or a difference from the expected value, so the result can be used directly as the GitHub Actions job status. When using a Linux arm64 runner or another platform, change the asset name to match the [list of release assets](#download-from-github-releases).
+
+## GitLab CI
+
+The following example tests CloudFront Functions in GitLab CI using a release binary on a Linux amd64 runner. Replace `vX.Y.Z` with the release tag you want to use, and adjust the file paths under `cloudfront/` to match your repository layout.
 
 `.gitlab-ci.yml`:
 
@@ -192,7 +225,7 @@ cloudfront-functions:
       --expected cloudfront/expected.json
 ```
 
-`cff-test test` exits with code `0` on success and `1` when it detects a compatibility violation or a difference from the expected value, so the result can be used directly as the CI job status. When using a Linux arm64 runner or another platform, change the asset name to match the [list of release assets](#download-from-github-releases).
+`cff-test test` exits with code `0` on success and `1` when it detects a compatibility violation or a difference from the expected value, so the result can be used directly as the GitLab CI job status. When using a Linux arm64 runner or another platform, change the asset name to match the [list of release assets](#download-from-github-releases).
 
 ## Commands
 
