@@ -1,0 +1,15 @@
+{
+  "functions": [
+    {
+      "name": "rewrite",
+      "function": "../functions/rewrite.js",
+      "cases": [
+        {
+          "name": "null event",
+          "event": null,
+          "expected": "../expected/rewrite.json"
+        }
+      ]
+    }
+  ]
+}

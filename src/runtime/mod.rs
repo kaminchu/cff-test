@@ -7,7 +7,7 @@ mod module_loader;
 use std::{
     collections::BTreeMap,
     fs,
-    path::Path,
+    path::{Path, PathBuf},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -65,15 +65,25 @@ impl KvsFixture {
             path: path.to_path_buf(),
             source,
         })?;
-        let raw: RawKvs = serde_json::from_str(&text).map_err(|error| AppError::Json {
+        let value: JsonValue = serde_json::from_str(&text).map_err(|error| AppError::Json {
             path: path.to_path_buf(),
             line: error.line(),
             column: error.column(),
             message: error.to_string(),
         })?;
+        Self::from_value(value, path.to_path_buf())
+    }
+
+    pub fn from_value(value: JsonValue, location: PathBuf) -> AppResult<Self> {
+        let raw: RawKvs = serde_json::from_value(value).map_err(|error| AppError::Json {
+            path: location.clone(),
+            line: 1,
+            column: 1,
+            message: error.to_string(),
+        })?;
         if raw.meta.key_count != raw.values.len() {
             return Err(AppError::Json {
-                path: path.to_path_buf(),
+                path: location.clone(),
                 line: 1,
                 column: 1,
                 message: "meta.keyCount must equal the number of values".into(),
@@ -83,7 +93,7 @@ impl KvsFixture {
         for (key, value) in raw.values {
             if !matches!(value.format.as_str(), "string" | "json" | "bytes") {
                 return Err(AppError::Json {
-                    path: path.to_path_buf(),
+                    path: location.clone(),
                     line: 1,
                     column: 1,
                     message: format!("values.{key}.format must be string, json, or bytes"),
@@ -91,7 +101,7 @@ impl KvsFixture {
             }
             if matches!(value.format.as_str(), "string" | "bytes") && !value.value.is_string() {
                 return Err(AppError::Json {
-                    path: path.to_path_buf(),
+                    path: location.clone(),
                     line: 1,
                     column: 1,
                     message: format!(
@@ -102,7 +112,7 @@ impl KvsFixture {
             }
             if value.format == "bytes" && STANDARD.decode(value.value.as_str().unwrap()).is_err() {
                 return Err(AppError::Json {
-                    path: path.to_path_buf(),
+                    path: location.clone(),
                     line: 1,
                     column: 1,
                     message: format!("values.{key}.value must be valid standard base64"),

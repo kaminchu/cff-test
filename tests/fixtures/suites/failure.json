@@ -1,0 +1,20 @@
+{
+  "functions": [
+    {
+      "name": "rewrite",
+      "function": "../functions/rewrite.js",
+      "cases": [
+        {
+          "name": "mismatch",
+          "event": "../events/request.json",
+          "expected": "../expected/mismatch.json"
+        },
+        {
+          "name": "continues",
+          "event": "../events/request.json",
+          "expected": "../expected/rewrite.json"
+        }
+      ]
+    }
+  ]
+}

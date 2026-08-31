@@ -1,0 +1,437 @@
+{
+  "functions": [
+    {
+      "name": "Add HTTP security headers",
+      "function": "add-security-headers.js",
+      "cases": [
+        {
+          "name": "adds security headers",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-response" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/index.html",
+              "querystring": {},
+              "headers": { "host": { "value": "example.com" } },
+              "cookies": {}
+            },
+            "response": {
+              "statusCode": 200,
+              "statusDescription": "OK",
+              "headers": { "content-type": { "value": "text/html" } },
+              "cookies": {}
+            }
+          },
+          "expected": {
+            "statusCode": 200,
+            "statusDescription": "OK",
+            "headers": {
+              "content-type": { "value": "text/html" },
+              "strict-transport-security": { "value": "max-age=63072000; includeSubdomains; preload" },
+              "content-security-policy": { "value": "default-src 'none'; img-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; frame-ancestors 'none'" },
+              "x-content-type-options": { "value": "nosniff" },
+              "x-frame-options": { "value": "DENY" },
+              "x-xss-protection": { "value": "1; mode=block" },
+              "referrer-policy": { "value": "same-origin" }
+            },
+            "cookies": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Add a CORS header",
+      "function": "add-cors-header.js",
+      "cases": [
+        {
+          "name": "copies the request origin",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-response" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/api",
+              "querystring": {},
+              "headers": {
+                "host": { "value": "example.com" },
+                "origin": { "value": "https://client.example" }
+              },
+              "cookies": {}
+            },
+            "response": {
+              "statusCode": 200,
+              "statusDescription": "OK",
+              "headers": { "content-type": { "value": "application/json" } },
+              "cookies": {}
+            }
+          },
+          "expected": {
+            "statusCode": 200,
+            "statusDescription": "OK",
+            "headers": {
+              "content-type": { "value": "application/json" },
+              "access-control-allow-origin": { "value": "https://client.example" }
+            },
+            "cookies": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Add a cache control header",
+      "function": "add-cache-control-header.js",
+      "cases": [
+        {
+          "name": "adds cache control to a successful response",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-response" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/asset.js",
+              "querystring": {},
+              "headers": { "host": { "value": "example.com" } },
+              "cookies": {}
+            },
+            "response": {
+              "statusCode": 200,
+              "statusDescription": "OK",
+              "headers": { "content-type": { "value": "application/javascript" } },
+              "cookies": {}
+            }
+          },
+          "expected": {
+            "statusCode": 200,
+            "statusDescription": "OK",
+            "headers": {
+              "content-type": { "value": "application/javascript" },
+              "cache-control": { "value": "public, max-age=63072000" }
+            },
+            "cookies": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Add a true client IP header",
+      "function": "add-true-client-ip-header.js",
+      "cases": [
+        {
+          "name": "copies the viewer IP",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-request" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/",
+              "querystring": {},
+              "headers": { "host": { "value": "example.com" } },
+              "cookies": {}
+            }
+          },
+          "expected": {
+            "method": "GET",
+            "uri": "/",
+            "querystring": {},
+            "headers": {
+              "host": { "value": "example.com" },
+              "true-client-ip": { "value": "198.51.100.11" }
+            },
+            "cookies": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Add an origin header",
+      "function": "add-origin-header.js",
+      "cases": [
+        {
+          "name": "uses the host when origin is missing",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-request" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/",
+              "querystring": {},
+              "headers": { "host": { "value": "example.com" } },
+              "cookies": {}
+            }
+          },
+          "expected": {
+            "method": "GET",
+            "uri": "/",
+            "querystring": {},
+            "headers": {
+              "host": { "value": "example.com" },
+              "origin": { "value": "https://example.com" }
+            },
+            "cookies": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Add index.html to request URLs",
+      "function": "url-rewrite-single-page-apps.js",
+      "cases": [
+        {
+          "name": "adds index.html to a directory URI",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-request" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/docs/",
+              "querystring": {},
+              "headers": { "host": { "value": "example.com" } },
+              "cookies": {}
+            }
+          },
+          "expected": {
+            "method": "GET",
+            "uri": "/docs/index.html",
+            "querystring": {},
+            "headers": { "host": { "value": "example.com" } },
+            "cookies": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Normalize query string parameters",
+      "function": "normalize-query-string-parameters.js",
+      "cases": [
+        {
+          "name": "sorts parameters and multiple values",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-request" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/search",
+              "querystring": {
+                "z": { "value": "last" },
+                "a": {
+                  "value": "b",
+                  "multiValue": [
+                    { "value": "b" },
+                    { "value": "a" }
+                  ]
+                }
+              },
+              "headers": { "host": { "value": "example.com" } },
+              "cookies": {}
+            }
+          },
+          "expected": {
+            "method": "GET",
+            "uri": "/search",
+            "querystring": "a=a&a=b&z=last",
+            "headers": { "host": { "value": "example.com" } },
+            "cookies": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Redirect to a new URL",
+      "function": "redirect-based-on-country.js",
+      "cases": [
+        {
+          "name": "redirects viewers in Germany",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-request" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/",
+              "querystring": {},
+              "headers": {
+                "host": { "value": "example.com" },
+                "cloudfront-viewer-country": { "value": "DE" }
+              },
+              "cookies": {}
+            }
+          },
+          "expected": {
+            "statusCode": 302,
+            "statusDescription": "Found",
+            "headers": {
+              "location": { "value": "https://example.com/de/index.html" }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Rewrite a request URI",
+      "function": "kvs-conditional-read.js",
+      "cases": [
+        {
+          "name": "uses the configured A path",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-request" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/latest/page",
+              "querystring": {},
+              "headers": { "host": { "value": "example.com" } },
+              "cookies": {}
+            }
+          },
+          "expected": {
+            "method": "GET",
+            "uri": "/v1/page",
+            "querystring": {},
+            "headers": { "host": { "value": "example.com" } },
+            "cookies": {}
+          },
+          "kvs": {
+            "values": {
+              "latest": {
+                "format": "string",
+                "value": "{\"a_weightage\":1,\"a_url\":\"v1\",\"b_url\":\"v2\"}"
+              }
+            },
+            "meta": {
+              "creationDateTime": "2024-01-01T00:00:00.000Z",
+              "lastUpdatedDateTime": "2024-01-02T00:00:00.000Z",
+              "keyCount": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Select origin closer to the viewer",
+      "function": "select-origin-based-on-country.js",
+      "cases": [
+        {
+          "name": "selects the Japan region without changing the returned request",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-request" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/asset",
+              "querystring": {},
+              "headers": {
+                "host": { "value": "example.com" },
+                "cloudfront-viewer-country": { "value": "JP" }
+              },
+              "cookies": {}
+            }
+          },
+          "expected": {
+            "method": "GET",
+            "uri": "/asset",
+            "querystring": {},
+            "headers": {
+              "host": { "value": "example.com" },
+              "cloudfront-viewer-country": { "value": "JP" }
+            },
+            "cookies": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "Use key-value pairs",
+      "function": "kvs-key-value-pairs.js",
+      "cases": [
+        {
+          "name": "replaces the first path segment",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-request" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/color/page",
+              "querystring": {},
+              "headers": { "host": { "value": "example.com" } },
+              "cookies": {}
+            }
+          },
+          "expected": {
+            "method": "GET",
+            "uri": "/blue/page",
+            "querystring": {},
+            "headers": { "host": { "value": "example.com" } },
+            "cookies": {}
+          },
+          "kvs": {
+            "values": {
+              "color": { "format": "string", "value": "blue" }
+            },
+            "meta": {
+              "creationDateTime": "2024-01-01T00:00:00.000Z",
+              "lastUpdatedDateTime": "2024-01-02T00:00:00.000Z",
+              "keyCount": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Validate a simple token",
+      "function": "kvs-jwt-verify.js",
+      "cases": [
+        {
+          "name": "accepts a valid token and removes it",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-request" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/private",
+              "querystring": {
+                "jwt": {
+                  "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJleGFtcGxlIn0.ndTJF_UC6ZweYBUMGgI87j-FP0mWJeFtw_EIZgnQv3I"
+                },
+                "page": { "value": "1" }
+              },
+              "headers": { "host": { "value": "example.com" } },
+              "cookies": {}
+            }
+          },
+          "expected": {
+            "method": "GET",
+            "uri": "/private",
+            "querystring": {
+              "page": { "value": "1" }
+            },
+            "headers": { "host": { "value": "example.com" } },
+            "cookies": {}
+          },
+          "kvs": {
+            "values": {
+              "jwt.secret": { "format": "string", "value": "test-secret" }
+            },
+            "meta": {
+              "creationDateTime": "2024-01-01T00:00:00.000Z",
+              "lastUpdatedDateTime": "2024-01-02T00:00:00.000Z",
+              "keyCount": 1
+            }
+          },
+          "now_ms": 1700000000000
+        }
+      ]
+    }
+  ]
+}

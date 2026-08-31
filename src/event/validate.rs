@@ -49,7 +49,7 @@ pub fn validate_event(event: &Value) -> Result<(), Vec<ValidationError>> {
             }
         }
         Some("viewer-response") => {
-            validate_response(root.get("response"), "/response", &mut errors)
+            validate_response(root.get("response"), "/response", true, &mut errors)
         }
         _ => {}
     }
@@ -90,7 +90,12 @@ pub fn validate_return(
         }
     }
     if is_response {
-        validate_response(Some(value), "/", &mut errors);
+        validate_response(
+            Some(value),
+            "/",
+            event_type == Some("viewer-response"),
+            &mut errors,
+        );
     }
     if errors.is_empty() {
         Ok(())
@@ -124,6 +129,7 @@ fn validate_request(value: Option<&Value>, path: &str, errors: &mut Vec<Validati
     for name in ["querystring", "headers", "cookies"] {
         let item_path = format!("{path}/{name}");
         match object.get(name) {
+            Some(Value::String(_)) if path == "/" && name == "querystring" => {}
             Some(value) if value.is_object() => validate_entries(
                 value.as_object().unwrap(),
                 &item_path,
@@ -142,7 +148,12 @@ fn validate_request(value: Option<&Value>, path: &str, errors: &mut Vec<Validati
     }
 }
 
-fn validate_response(value: Option<&Value>, path: &str, errors: &mut Vec<ValidationError>) {
+fn validate_response(
+    value: Option<&Value>,
+    path: &str,
+    require_entries: bool,
+    errors: &mut Vec<ValidationError>,
+) {
     let Some(object) = required_object(value, path, errors) else {
         return;
     };
@@ -175,7 +186,8 @@ fn validate_response(value: Option<&Value>, path: &str, errors: &mut Vec<Validat
                 errors,
             ),
             Some(_) => errors.push(error(&item_path, "must be an object")),
-            None => errors.push(error(&item_path, "is required")),
+            None if require_entries => errors.push(error(&item_path, "is required")),
+            None => {}
         }
     }
     if let Some(body) = object.get("body") {

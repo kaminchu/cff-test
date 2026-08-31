@@ -1,11 +1,18 @@
 use std::io::{Seek, SeekFrom, Write};
+use std::path::PathBuf;
 
 use assert_cmd::Command;
 use predicates::prelude::*;
-use tempfile::NamedTempFile;
+use tempfile::{NamedTempFile, tempdir};
 
 fn cff() -> Command {
     assert_cmd::cargo::cargo_bin_cmd!("cff-test")
+}
+
+fn fixture_path(path: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(path)
 }
 
 #[test]
@@ -371,4 +378,165 @@ fn assertion_and_unsupported_feature_are_diagnostics() {
         .assert()
         .code(1)
         .stderr(predicate::str::contains("CFF012"));
+}
+
+#[test]
+fn suite_help_and_argument_exclusivity_are_explicit() {
+    cff().arg("--help").assert().success().stdout(
+        predicate::str::contains("cff-test test --suite <SUITE>").and(predicate::str::contains(
+            "Run test cases defined in a suite JSON file",
+        )),
+    );
+
+    for args in [
+        vec!["test", "function.js", "--suite", "suite.json"],
+        vec!["test", "--suite", "suite.json", "--event", "event.json"],
+        vec![
+            "test",
+            "--suite",
+            "suite.json",
+            "--expected",
+            "expected.json",
+        ],
+        vec!["test", "--suite", "suite.json", "--kvs", "kvs.json"],
+        vec!["test", "--suite", "suite.json", "--now-ms", "0"],
+        vec!["run", "--suite", "suite.json"],
+        vec!["check", "--suite", "suite.json"],
+        vec!["suite.json", "--suite", "suite.json"],
+        vec!["--suite", "suite.json"],
+    ] {
+        cff().args(args).assert().code(2);
+    }
+}
+
+#[test]
+fn suite_runs_in_order_from_its_directory() {
+    let directory = tempdir().unwrap();
+    let suite = fixture_path("suites/basic.json");
+    cff()
+        .current_dir(directory.path())
+        .args(["test", "--suite", suite.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(concat!(
+            "PASS: rewrite / file inputs\n",
+            "PASS: rewrite / inline inputs\n",
+            "SKIP: rewrite / disabled case\n",
+            "PASS: querystring / file inputs\n",
+            "PASS: querystring / explicit false skip\n",
+            "RESULT: 4 passed, 0 failed, 1 skipped\n",
+        ));
+}
+
+#[test]
+fn suite_continues_after_case_failures_and_reports_summary() {
+    let suite = fixture_path("suites/failure.json");
+    cff()
+        .args(["test", "--suite", suite.to_str().unwrap()])
+        .assert()
+        .code(1)
+        .stdout("PASS: rewrite / continues\n")
+        .stderr(
+            predicate::str::contains("FAIL: rewrite / mismatch")
+                .and(predicate::str::contains("/uri"))
+                .and(predicate::str::contains(
+                    "RESULT: 1 passed, 1 failed, 0 skipped",
+                )),
+        );
+}
+
+#[test]
+fn suite_cases_keep_kvs_separate() {
+    let suite = fixture_path("suites/kvs.json");
+    cff()
+        .args(["test", "--suite", suite.to_str().unwrap()])
+        .assert()
+        .code(1)
+        .stdout(concat!(
+            "PASS: kvs / file fixture\n",
+            "PASS: kvs / inline fixture\n",
+        ))
+        .stderr(
+            predicate::str::contains("FAIL: kvs / no fixture")
+                .and(predicate::str::contains(
+                    "JavaScript module evaluation failed",
+                ))
+                .and(predicate::str::contains(
+                    "RESULT: 2 passed, 1 failed, 0 skipped",
+                )),
+        );
+}
+
+#[test]
+fn suite_cases_keep_time_separate() {
+    let suite = fixture_path("suites/date.json");
+    cff()
+        .args(["test", "--suite", suite.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(concat!(
+            "PASS: date / epoch\n",
+            "PASS: date / one second later\n",
+            "RESULT: 2 passed, 0 failed, 0 skipped\n",
+        ));
+}
+
+#[test]
+fn suite_skips_compatibility_check_when_all_cases_are_skipped() {
+    let suite = fixture_path("suites/all-skipped.json");
+    cff()
+        .args(["test", "--suite", suite.to_str().unwrap()])
+        .assert()
+        .success()
+        .stdout(concat!(
+            "SKIP: unsupported / disabled\n",
+            "RESULT: 0 passed, 0 failed, 1 skipped\n",
+        ))
+        .stderr("");
+
+    let suite = fixture_path("suites/compatibility.json");
+    cff()
+        .args(["test", "--suite", suite.to_str().unwrap()])
+        .assert()
+        .code(1)
+        .stdout("SKIP: unsupported / disabled\n")
+        .stderr(
+            predicate::str::contains("FAIL: unsupported / enabled")
+                .and(predicate::str::contains("CFF004"))
+                .and(predicate::str::contains(
+                    "RESULT: 0 passed, 1 failed, 1 skipped",
+                )),
+        );
+}
+
+#[test]
+fn suite_validates_null_inline_event_and_all_references_before_running() {
+    let null_event = fixture_path("suites/null-event.json");
+    cff()
+        .args(["test", "--suite", null_event.to_str().unwrap()])
+        .assert()
+        .code(1)
+        .stderr(
+            predicate::str::contains("event validation failed")
+                .and(predicate::str::contains("I/O error").not()),
+        );
+
+    let invalid_later = fixture_path("suites/invalid-later.json");
+    cff()
+        .args(["test", "--suite", invalid_later.to_str().unwrap()])
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(predicate::str::contains("I/O error"));
+
+    let null_kvs = fixture_path("suites/null-kvs.json");
+    cff()
+        .args(["test", "--suite", null_kvs.to_str().unwrap()])
+        .assert()
+        .code(2)
+        .stdout("")
+        .stderr(
+            predicate::str::contains("#functions[0].cases[0].kvs")
+                .and(predicate::str::contains("invalid JSON")),
+        );
 }

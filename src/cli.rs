@@ -8,7 +8,8 @@ use crate::error::{AppError, AppResult};
 #[command(
     name = "cff-test",
     version,
-    about = "Test CloudFront Functions locally"
+    about = "Test CloudFront Functions locally",
+    after_help = "Suite usage:\n  cff-test test --suite <SUITE>"
 )]
 struct RawCli {
     #[arg(value_name = "COMMAND|FUNCTION")]
@@ -28,23 +29,41 @@ struct RawCli {
 
     #[arg(long = "now-ms", value_name = "MILLISECONDS")]
     now_ms: Option<i64>,
-}
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Command {
-    Check,
-    Run,
-    Test,
+    #[arg(
+        long = "suite",
+        value_name = "SUITE",
+        help = "Run test cases defined in a suite JSON file"
+    )]
+    suite: Option<PathBuf>,
 }
 
 #[derive(Debug)]
-pub struct Cli {
-    pub command: Command,
-    pub function: PathBuf,
-    pub event: Option<PathBuf>,
-    pub expected: Option<PathBuf>,
-    pub kvs: Option<PathBuf>,
-    pub now_ms: Option<i64>,
+pub enum Cli {
+    Check {
+        function: PathBuf,
+    },
+    Run {
+        function: PathBuf,
+        event: PathBuf,
+        kvs: Option<PathBuf>,
+        now_ms: Option<i64>,
+    },
+    Test(TestInput),
+}
+
+#[derive(Debug)]
+pub enum TestInput {
+    Single {
+        function: PathBuf,
+        event: PathBuf,
+        expected: PathBuf,
+        kvs: Option<PathBuf>,
+        now_ms: Option<i64>,
+    },
+    Suite {
+        path: PathBuf,
+    },
 }
 
 impl Cli {
@@ -56,17 +75,33 @@ impl Cli {
                 _ => return Err(AppError::Usage(error.to_string())),
             },
         };
-        let (command, function) = match (raw.target.as_str(), raw.function) {
-            ("check", Some(function)) => (Command::Check, function),
-            ("run", Some(function)) => (Command::Run, function),
-            ("test", Some(function)) => (Command::Test, function),
+
+        if let Some(path) = raw.suite {
+            if raw.target != "test"
+                || raw.function.is_some()
+                || raw.event.is_some()
+                || raw.expected.is_some()
+                || raw.kvs.is_some()
+                || raw.now_ms.is_some()
+            {
+                return Err(AppError::Usage(
+                    "--suite is only allowed with test and cannot be combined with other test inputs"
+                        .into(),
+                ));
+            }
+            return Ok(Self::Test(TestInput::Suite { path }));
+        }
+
+        let target = raw.target;
+        let function = match (target.as_str(), raw.function) {
+            ("check" | "run" | "test", Some(function)) => function,
             ("check" | "run" | "test", None) => {
                 return Err(AppError::Usage(format!(
                     "{} requires a function path",
-                    raw.target
+                    target
                 )));
             }
-            (_, None) => (Command::Test, PathBuf::from(raw.target)),
+            (_, None) => PathBuf::from(&target),
             (_, Some(_)) => {
                 return Err(AppError::Usage(
                     "a function path is only allowed after check, run, or test".into(),
@@ -74,8 +109,8 @@ impl Cli {
             }
         };
 
-        match command {
-            Command::Check => {
+        match target.as_str() {
+            "check" => {
                 if raw.event.is_some()
                     || raw.expected.is_some()
                     || raw.kvs.is_some()
@@ -83,32 +118,48 @@ impl Cli {
                 {
                     return Err(AppError::Usage("check accepts only a function path".into()));
                 }
+                Ok(Self::Check { function })
             }
-            Command::Run => {
-                if raw.event.is_none() {
+            "run" => {
+                let Some(event) = raw.event else {
                     return Err(AppError::Usage("run requires --event".into()));
-                }
+                };
                 if raw.expected.is_some() {
                     return Err(AppError::Usage("run does not accept --expected".into()));
                 }
+                Ok(Self::Run {
+                    function,
+                    event,
+                    kvs: raw.kvs,
+                    now_ms: raw.now_ms,
+                })
             }
-            Command::Test => {
-                if raw.event.is_none() {
+            "test" => {
+                let Some(event) = raw.event else {
                     return Err(AppError::Usage("test requires --event".into()));
-                }
-                if raw.expected.is_none() {
+                };
+                let Some(expected) = raw.expected else {
                     return Err(AppError::Usage("test requires --expected".into()));
-                }
+                };
+                Ok(Self::Test(TestInput::Single {
+                    function,
+                    event,
+                    expected,
+                    kvs: raw.kvs,
+                    now_ms: raw.now_ms,
+                }))
             }
+            _ => Ok(Self::Test(TestInput::Single {
+                function,
+                event: raw
+                    .event
+                    .ok_or_else(|| AppError::Usage("test requires --event".into()))?,
+                expected: raw
+                    .expected
+                    .ok_or_else(|| AppError::Usage("test requires --expected".into()))?,
+                kvs: raw.kvs,
+                now_ms: raw.now_ms,
+            })),
         }
-
-        Ok(Self {
-            command,
-            function,
-            event: raw.event,
-            expected: raw.expected,
-            kvs: raw.kvs,
-            now_ms: raw.now_ms,
-        })
     }
 }

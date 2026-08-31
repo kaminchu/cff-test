@@ -1,0 +1,60 @@
+{
+  "functions": [
+    {
+      "name": "rewrite",
+      "function": "../functions/rewrite.js",
+      "cases": [
+        {
+          "name": "file inputs",
+          "event": "../events/request.json",
+          "expected": "../expected/rewrite.json"
+        },
+        {
+          "name": "inline inputs",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-request" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/original",
+              "querystring": {},
+              "headers": { "host": { "value": "example.com" } },
+              "cookies": {}
+            }
+          },
+          "expected": {
+            "method": "GET",
+            "uri": "/rewritten",
+            "querystring": {},
+            "headers": { "host": { "value": "example.com" } },
+            "cookies": {}
+          }
+        },
+        {
+          "name": "disabled case",
+          "event": "../events/request.json",
+          "expected": "../expected/rewrite.json",
+          "skip": true
+        }
+      ]
+    },
+    {
+      "name": "querystring",
+      "function": "../functions/querystring_rewrite.js",
+      "cases": [
+        {
+          "name": "file inputs",
+          "event": "../events/request.json",
+          "expected": "../expected/querystring_rewrite.json"
+        },
+        {
+          "name": "explicit false skip",
+          "event": "../events/request.json",
+          "expected": "../expected/querystring_rewrite.json",
+          "skip": false
+        }
+      ]
+    }
+  ]
+}

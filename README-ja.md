@@ -54,6 +54,7 @@ pull request -> cff-test -> merge -> AWS function を更新 -> AWS test-function
 - 期待値との差分を JSON Pointer 単位で表示
 - `crypto`、`querystring`、ローカル KVS fixture を使う `cloudfront` module に対応
 - `--now-ms` による `Date` の再現可能な固定
+- 1つの suite JSON ファイルに複数の関数・ケースを定義して実行
 - AWS 認証情報、ネットワーク接続、Node.js が不要
 
 対応範囲の詳細は [互換性ドキュメント](docs/compatibility.md) を参照してください。
@@ -182,6 +183,9 @@ jobs:
             cloudfront/function.js \
             --event cloudfront/event.json \
             --expected cloudfront/expected.json
+
+      - name: Test CloudFront Function suite
+        run: cff-test test --suite cloudfront/cff-test.json
 ```
 
 Action を `v1` のような major tag で指定すると、その major version の最新 release がインストールされます。CLI の version を個別に固定する場合は、`version` に完全な release tag を指定します。
@@ -231,6 +235,7 @@ cloudfront-functions:
 cff-test check <FUNCTION>
 cff-test run <FUNCTION> --event <EVENT> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
 cff-test test <FUNCTION> --event <EVENT> --expected <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
+cff-test test --suite <SUITE>
 cff-test <FUNCTION> --event <EVENT> --expected <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
 ```
 
@@ -239,11 +244,74 @@ cff-test <FUNCTION> --event <EVENT> --expected <EXPECTED> [--kvs <KVS>] [--now-m
 | `check` | 関数コードを静的検査します。event は実行しません。 |
 | `run` | event を使って関数を実行し、戻り値 JSON を標準出力へ出します。 |
 | `test` | 関数の戻り値と期待値 JSON を比較します。 |
+| `test --suite` | suite JSON に定義した関数とケースを実行します。 |
 | command 省略 | `test` と同じ動作です。 |
 
 `FUNCTION` は UTF-8 の JavaScript ファイル、`EVENT` と `EXPECTED` は UTF-8 の JSON ファイルです。`EVENT` には CloudFront Functions event version `1.0` を、`EXPECTED` には handler が返す request または response を指定します。
 
 `console.log()` の内容と診断・エラーは標準エラー出力へ出るため、`run` の標準出力は JSON として別のコマンドへ渡せます。
+
+### Suite テスト
+
+`cff-test test --suite <SUITE>` で、複数の関数とケースを定義順に実行できます。
+
+```json
+{
+  "functions": [
+    {
+      "name": "rewrite",
+      "function": "functions/rewrite.js",
+      "cases": [
+        {
+          "name": "通常の request",
+          "event": "events/request.json",
+          "expected": "expected/rewrite.json"
+        },
+        {
+          "name": "inline request",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-request" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/original",
+              "querystring": {},
+              "headers": { "host": { "value": "example.com" } },
+              "cookies": {}
+            }
+          },
+          "expected": "expected/rewrite.json",
+          "skip": false
+        }
+      ]
+    }
+  ]
+}
+```
+
+`event`、`expected`、`kvs` の JSON 文字列は常に JSON ファイルのパスとして扱います。それ以外の JSON 値は inline 値として扱い、`null` も含まれます。相対パスは current working directory ではなく suite ファイルの親ディレクトリを基準に解決します。`kvs`、`now_ms`、`skip` はケースごとに独立しています。`skip: true` のケースも入力を検証しますが、実行はしません。
+
+inline KVS と固定時刻は、例えば次のように指定します。
+
+```json
+{
+  "name": "KVS と時刻",
+  "event": "events/request.json",
+  "expected": "expected/kvs.json",
+  "kvs": {
+    "values": {
+      "setting": { "format": "string", "value": "enabled" }
+    },
+    "meta": {
+      "creationDateTime": "2024-01-01T00:00:00.000Z",
+      "lastUpdatedDateTime": "2024-01-02T00:00:00.000Z",
+      "keyCount": 1
+    }
+  },
+  "now_ms": 0
+}
+```
 
 ### 終了コード
 
