@@ -249,12 +249,14 @@ impl RuleVisitor<'_> {
     }
     fn inspect_member(&mut self, member: &MemberExpr) {
         if let Some((base, property)) = self.member_name(member) {
-            if self.cloudfront_bindings.contains(base) && property != "kvs" {
+            if self.cloudfront_bindings.contains(base)
+                && !matches!(property, "kvs" | "updateRequestOrigin")
+            {
                 self.add(
                     member.span,
                     "CFF012",
                     format!("cloudfront.{property} is not supported by this version of cff-test"),
-                    "use cloudfront.kvs() only",
+                    "use a supported cloudfront helper",
                 );
             }
             if base == "console" && property != "log" {

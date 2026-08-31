@@ -23,3 +23,6 @@ jobs:
 
       - name: Test
         run: cargo +"${RUST_VERSION}" test --locked
+
+      - name: Test AWS CloudFront Functions examples
+        run: cargo +"${RUST_VERSION}" run --locked -- test --suite examples/suite.json
