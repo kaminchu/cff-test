@@ -1,0 +1,40 @@
+{
+  "functions": [
+    {
+      "name": "date",
+      "function": "../functions/date_now.js",
+      "cases": [
+        {
+          "name": "epoch",
+          "event": "../events/request.json",
+          "expected": {
+            "method": "GET",
+            "uri": "/original",
+            "querystring": {},
+            "headers": {
+              "host": { "value": "example.com" },
+              "x-now": { "value": "0" }
+            },
+            "cookies": {}
+          },
+          "now_ms": 0
+        },
+        {
+          "name": "one second later",
+          "event": "../events/request.json",
+          "expected": {
+            "method": "GET",
+            "uri": "/original",
+            "querystring": {},
+            "headers": {
+              "host": { "value": "example.com" },
+              "x-now": { "value": "1000" }
+            },
+            "cookies": {}
+          },
+          "now_ms": 1000
+        }
+      ]
+    }
+  ]
+}

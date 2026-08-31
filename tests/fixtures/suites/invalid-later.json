@@ -1,0 +1,20 @@
+{
+  "functions": [
+    {
+      "name": "rewrite",
+      "function": "../functions/rewrite.js",
+      "cases": [
+        {
+          "name": "would pass",
+          "event": "../events/request.json",
+          "expected": "../expected/rewrite.json"
+        },
+        {
+          "name": "missing input",
+          "event": "../events/does-not-exist.json",
+          "expected": "../expected/rewrite.json"
+        }
+      ]
+    }
+  ]
+}

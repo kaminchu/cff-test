@@ -54,6 +54,7 @@ Use `cff-test` for fast, repeatable local and CI feedback, then use AWS testing 
 - Displays differences from expected values by JSON Pointer
 - Supports `crypto`, `querystring`, and the `cloudfront` module backed by a local KVS fixture
 - Reproducibly freezes `Date` with `--now-ms`
+- Runs multiple functions and test cases from one suite JSON file
 - Requires no AWS credentials, network connection, or Node.js
 
 See the [compatibility documentation](docs/compatibility.md) for details about the supported scope.
@@ -182,6 +183,9 @@ jobs:
             cloudfront/function.js \
             --event cloudfront/event.json \
             --expected cloudfront/expected.json
+
+      - name: Test CloudFront Function suite
+        run: cff-test test --suite cloudfront/cff-test.json
 ```
 
 When the action is referenced by a major tag such as `v1`, it installs the newest release in that major version. To pin the CLI independently, set `version` to a full release tag:
@@ -231,6 +235,7 @@ cloudfront-functions:
 cff-test check <FUNCTION>
 cff-test run <FUNCTION> --event <EVENT> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
 cff-test test <FUNCTION> --event <EVENT> --expected <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
+cff-test test --suite <SUITE>
 cff-test <FUNCTION> --event <EVENT> --expected <EXPECTED> [--kvs <KVS>] [--now-ms <MILLISECONDS>]
 ```
 
@@ -239,11 +244,74 @@ cff-test <FUNCTION> --event <EVENT> --expected <EXPECTED> [--kvs <KVS>] [--now-m
 | `check` | Statically checks the function code without executing an event. |
 | `run` | Runs the function with an event and prints the returned JSON to standard output. |
 | `test` | Compares the function's return value with the expected JSON. |
+| `test --suite` | Runs the functions and cases defined in a suite JSON file. |
 | Command omitted | Behaves the same as `test`. |
 
 `FUNCTION` is a UTF-8 JavaScript file, while `EVENT` and `EXPECTED` are UTF-8 JSON files. Specify CloudFront Functions event version `1.0` in `EVENT`, and the request or response returned by the handler in `EXPECTED`.
 
 Because `console.log()` output, diagnostics, and errors are written to standard error, the standard output from `run` can be piped to another command as JSON.
+
+### Suite tests
+
+Use `cff-test test --suite <SUITE>` to run multiple functions and cases in declaration order:
+
+```json
+{
+  "functions": [
+    {
+      "name": "rewrite",
+      "function": "functions/rewrite.js",
+      "cases": [
+        {
+          "name": "normal request",
+          "event": "events/request.json",
+          "expected": "expected/rewrite.json"
+        },
+        {
+          "name": "inline request",
+          "event": {
+            "version": "1.0",
+            "context": { "eventType": "viewer-request" },
+            "viewer": { "ip": "198.51.100.11" },
+            "request": {
+              "method": "GET",
+              "uri": "/original",
+              "querystring": {},
+              "headers": { "host": { "value": "example.com" } },
+              "cookies": {}
+            }
+          },
+          "expected": "expected/rewrite.json",
+          "skip": false
+        }
+      ]
+    }
+  ]
+}
+```
+
+String values in `event`, `expected`, and `kvs` are always paths to JSON files. Other JSON values are used inline, including `null`. Relative paths are resolved from the suite file's directory, regardless of the current working directory. `kvs`, `now_ms`, and `skip` apply to each case independently; `skip: true` validates the case inputs but does not execute the case.
+
+For example, an inline KVS and a fixed time can be specified as follows:
+
+```json
+{
+  "name": "KVS and time",
+  "event": "events/request.json",
+  "expected": "expected/kvs.json",
+  "kvs": {
+    "values": {
+      "setting": { "format": "string", "value": "enabled" }
+    },
+    "meta": {
+      "creationDateTime": "2024-01-01T00:00:00.000Z",
+      "lastUpdatedDateTime": "2024-01-02T00:00:00.000Z",
+      "keyCount": 1
+    }
+  },
+  "now_ms": 0
+}
+```
 
 ### Exit codes
 

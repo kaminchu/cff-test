@@ -5,6 +5,7 @@ mod cli;
 mod error;
 mod event;
 mod runtime;
+mod suite;
 
 fn main() {
     let cli = cli::Cli::parse_args();

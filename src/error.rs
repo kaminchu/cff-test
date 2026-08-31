@@ -10,6 +10,8 @@ pub type AppResult<T> = Result<T, AppError>;
 pub enum AppError {
     #[error("usage error: {0}")]
     Usage(String),
+    #[error("invalid suite {path}: {message}")]
+    Suite { path: PathBuf, message: String },
     #[error("I/O error for {path}: {source}")]
     Io {
         path: PathBuf,
@@ -42,6 +44,18 @@ pub enum AppError {
     ReturnValidation(Vec<ValidationError>),
     #[error("{0}")]
     Assertion(AssertionError),
+    #[error("{}", format_suite_failures(.passed, .skipped, .failures))]
+    SuiteFailures {
+        passed: usize,
+        skipped: usize,
+        failures: Vec<SuiteCaseFailure>,
+    },
+}
+
+#[derive(Debug)]
+pub struct SuiteCaseFailure {
+    pub label: String,
+    pub message: String,
 }
 
 #[derive(Debug, Error)]
@@ -54,7 +68,7 @@ pub struct AssertionError {
 impl AppError {
     pub fn exit_code(&self) -> i32 {
         match self {
-            Self::Usage(_) | Self::Io { .. } | Self::Json { .. } => 2,
+            Self::Usage(_) | Self::Suite { .. } | Self::Io { .. } | Self::Json { .. } => 2,
             _ => 1,
         }
     }
@@ -85,6 +99,22 @@ fn format_stack(stack: &Option<String>) -> String {
     stack
         .as_deref()
         .map_or(String::new(), |stack| format!("\n{stack}"))
+}
+
+fn format_suite_failures(passed: &usize, skipped: &usize, failures: &[SuiteCaseFailure]) -> String {
+    let mut output = failures
+        .iter()
+        .map(|failure| format!("FAIL: {}\n{}", failure.label, failure.message))
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    if !output.is_empty() {
+        output.push_str("\n\n");
+    }
+    output.push_str(&format!(
+        "RESULT: {passed} passed, {} failed, {skipped} skipped",
+        failures.len()
+    ));
+    output
 }
 
 impl From<io::Error> for AppError {

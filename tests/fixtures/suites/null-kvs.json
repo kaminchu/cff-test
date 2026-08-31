@@ -1,0 +1,16 @@
+{
+  "functions": [
+    {
+      "name": "rewrite",
+      "function": "../functions/rewrite.js",
+      "cases": [
+        {
+          "name": "null KVS",
+          "event": "../events/request.json",
+          "expected": "../expected/rewrite.json",
+          "kvs": null
+        }
+      ]
+    }
+  ]
+}

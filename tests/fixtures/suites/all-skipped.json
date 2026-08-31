@@ -1,0 +1,16 @@
+{
+  "functions": [
+    {
+      "name": "unsupported",
+      "function": "../functions/uses_fetch.js",
+      "cases": [
+        {
+          "name": "disabled",
+          "event": "../events/request.json",
+          "expected": "../expected/rewrite.json",
+          "skip": true
+        }
+      ]
+    }
+  ]
+}
