@@ -29,6 +29,7 @@ cff-test function.js --event event.json --expected expected.json [--kvs kvs.json
 - suiteファイルのinclude、継承、変数展開
 - function単位またはsuite全体の`kvs`、`now_ms`デフォルト値
 - ケースのfilter、tag、並列実行、fail-fast
+- skip理由や条件式による動的skip（初回実装はbooleanの`skip`だけを扱う）
 - JSON Schemaファイルの配布
 - suite実行結果のJSON/JUnit形式での出力
 
@@ -89,6 +90,12 @@ cff-test test --suite <SUITE>
           "name": "eventとexpectedをファイルから読む",
           "event": "events/request.json",
           "expected": "expected/rewrite.json"
+        },
+        {
+          "name": "一時的に無効化したケース",
+          "event": "events/legacy-request.json",
+          "expected": "expected/legacy-rewrite.json",
+          "skip": true
         },
         {
           "name": "JSONを直接記述する",
@@ -171,12 +178,16 @@ cff-test test --suite <SUITE>
 | `expected` | stringまたは任意のJSON値 | 必須 | 文字列ならJSONファイルへのパス、それ以外ならインライン期待値 |
 | `kvs` | stringまたは任意のJSON値 | 任意 | 文字列ならKVS fixtureファイルへのパス、それ以外ならインラインKVS fixture |
 | `now_ms` | signed 64-bit integer | 任意 | そのケースの固定時刻。既存`--now-ms`と同じ意味 |
+| `skip` | boolean | 任意 | `true`ならケースを実行しない。省略時は`false` |
 
 以下の規則を適用する。
 
 - `kvs`はケースにだけ指定できる。関数定義やトップレベルには置けない。
 - `kvs`省略時は、そのケースにKVSを関連付けない。直前ケースのKVSを引き継がない。
 - `now_ms`もケースごとに独立し、省略時は既存の単発実行と同様に実行時の現在時刻を使用する。
+- `skip`はJSON booleanだけを受け付ける。文字列の`"true"`、数値の`1`、`null`はsuite構成エラーにする。
+- `skip: true`でも`event`と`expected`は必須とし、`kvs`を含む参照ファイルの存在、UTF-8、JSON構文、KVS fixture形式まで事前検証する。skipはテスト実行だけを抑止し、壊れたsuite定義を隠す機能にはしない。
+- skipしたケースではevent validation、関数実行、戻り値validation、expected比較を行わない。skipは失敗件数に含めず、suiteの終了コードを失敗にはしない。
 - JSON文字列は常にファイルパスとして解釈する。インラインのJSON文字列としては解釈しない。
 - event、handlerの戻り値、KVS fixtureは既存仕様上JSONオブジェクトであるため、前項による実用上の表現欠落はない。
 - `null`をインライン指定した場合、ファイル未指定とは扱わず、そのJSON値を既存の検証へ渡す。eventの`null`はevent validation error、KVSの`null`はKVS fixtureの形式エラーになる。
@@ -226,6 +237,8 @@ pub struct RawSuiteCase {
     pub expected: JsonSource,
     pub kvs: Option<JsonSource>,
     pub now_ms: Option<i64>,
+    #[serde(default)]
+    pub skip: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -258,6 +271,7 @@ pub struct SuiteCase {
     pub expected: Value,
     pub kvs: Option<KvsFixture>,
     pub now_ms: Option<i64>,
+    pub skip: bool,
 }
 ```
 
@@ -276,7 +290,7 @@ pub struct SuiteCase {
 7. ファイルおよびインラインの全KVSを`KvsFixture`へ変換し、既存のKVS検証を行う。
 8. ここまで全部成功してから関数の互換性検査とケース実行を開始する。
 
-1〜7のどこかで失敗した場合、ケースは1件も実行せず終了コード`2`で終了する。eventのCloudFront eventとしての意味検証は既存どおり実行フェーズで行い、不正なeventはそのケースのテスト失敗（終了コード`1`）として扱う。
+1〜7のどこかで失敗した場合、ケースは1件も実行せず終了コード`2`で終了する。これは`skip: true`のケースが参照するファイルやKVS fixtureにも適用する。eventのCloudFront eventとしての意味検証は既存どおり実行フェーズで行い、不正なeventはそのケースのテスト失敗（終了コード`1`）として扱う。ただし、skipしたケースのeventは意味検証しない。
 
 expectedには新しい事前shape検証を追加しない。既存単発テストと同じく、実際の戻り値とのJSON比較だけを行う。
 
@@ -324,14 +338,15 @@ Suite {
     message: String,
 },
 
-#[error("{}", format_suite_failures(.passed, &.failures))]
+#[error("{}", format_suite_failures(.passed, .skipped, &.failures))]
 SuiteFailures {
     passed: usize,
+    skipped: usize,
     failures: Vec<SuiteCaseFailure>,
 },
 ```
 
-`SuiteCaseFailure`は少なくとも完全なcase label（`<function name> / <case name>`）と、元の`AppError`を文字列化したmessageを保持する。再帰的な`AppError`所有を避けるため、messageはケース失敗を収集するときに`error.to_string()`で確定してよい。
+`SuiteCaseFailure`は少なくとも完全なcase label（`<function name> / <case name>`）と、元の`AppError`を文字列化したmessageを保持する。再帰的な`AppError`所有を避けるため、messageはケース失敗を収集するときに`error.to_string()`で確定してよい。`format_suite_failures`は`passed`、`failures.len()`、`skipped`をsummaryへ出す。
 
 終了コードは次のとおりにする。
 
@@ -369,11 +384,11 @@ fn execute_checked(
 
 `run_suite(suite: Suite) -> AppResult<()>`を追加し、関数定義の順、ケース定義の順に逐次実行する。初回実装では並列化しない。出力順を安定させ、runtimeのresource limitや`console.log()`の順序を予測可能にするためである。
 
-各関数について`check(function_path, source)`は1回だけ実行し、成功した`CheckedSource`を全ケースで再利用する。
+各関数について、まずskipしていないケースが存在するかを判定する。1件以上存在する場合だけ`check(function_path, source)`を1回実行し、成功した`CheckedSource`を全実行対象ケースで再利用する。その後、ケースを定義順に処理し、`skip: true`ならskip件数へ加えて標準出力へSKIP行を出す。全ケースがskipなら互換性検査もJavaScript実行も行わない。function source自体の読み込みは事前読み込み仕様どおり行う。
 
-互換性検査が失敗した場合は、その関数の全ケースを失敗として記録し、各ケースのmessageに同じcompatibility errorを設定する。その関数のJavaScriptは実行せず、次の関数へ進む。これによりsummaryの総数は常にsuiteに宣言されたケース数と一致する。
+互換性検査が失敗した場合は、その関数のskipしていない全ケースを失敗として記録し、各ケースのmessageに同じcompatibility errorを設定する。skipしたケースはskipのままにする。その関数のJavaScriptは実行せず、次の関数へ進む。これによりsummaryのpassed + failed + skippedは常にsuiteに宣言されたケース数と一致する。
 
-互換性検査に成功した場合、各ケースを次の順で実行する。
+互換性検査に成功した場合、skipしていない各ケースを次の順で実行する。
 
 1. `execute_checked`を呼ぶ。
 2. actualとcaseのexpectedを`assert_json_equal`で比較する。
@@ -382,7 +397,7 @@ fn execute_checked(
 
 ケースごとに所有する`KvsFixture`を`RuntimeOptions`へ渡す。ケース間でruntime、KVS、event、時刻を共有しない。`KvsFixture`がclone可能な現状を利用してよいが、1ケースにつき1回しか実行しないため、不必要なcloneは追加しない。
 
-全ケース成功時はsummaryを標準出力へ出して`Ok(())`を返す。失敗があれば`AppError::SuiteFailures`を返し、`main`の既存処理によって失敗詳細とsummaryを標準エラー出力へ出す。
+失敗ケースがなければ、skipの有無にかかわらずsummaryを標準出力へ出して`Ok(())`を返す。全ケースがskipでも成功とする。失敗があれば`AppError::SuiteFailures`を返し、`main`の既存処理によって失敗詳細とsummaryを標準エラー出力へ出す。
 
 ## 出力仕様
 
@@ -396,11 +411,12 @@ case labelは常に次の形式とする。
 
 ```text
 PASS: rewrite / normal request
+SKIP: rewrite / legacy request
 PASS: rewrite / query string
-RESULT: 2 passed, 0 failed
+RESULT: 2 passed, 0 failed, 1 skipped
 ```
 
-失敗ケースがある場合、成功ケースのPASS行は標準出力へ出し、失敗一覧とsummaryは標準エラー出力へ出す。
+skipケースのSKIP行も定義順に標準出力へ出す。失敗ケースがある場合、成功ケースのPASS行とskipケースのSKIP行は標準出力へ出し、失敗一覧とsummaryは標準エラー出力へ出す。
 
 ```text
 FAIL: rewrite / mismatch
@@ -413,12 +429,12 @@ FAIL: auth / invalid event
 event validation failed:
 ...
 
-RESULT: 1 passed, 2 failed
+RESULT: 1 passed, 2 failed, 1 skipped
 ```
 
 失敗messageの各行を追加でindentしない。既存のdiagnosticやJSON Pointer差分の整形をそのまま保持するためである。failure同士は空行1行で区切る。末尾に余分な空行は付けず、summary末尾は改行する。
 
-0件ケースは禁止するため、`RESULT: 0 passed, 0 failed`は発生しない。
+0件ケースは禁止するため、`RESULT: 0 passed, 0 failed, 0 skipped`は発生しない。全ケースskipの場合は、例えば`RESULT: 0 passed, 0 failed, 2 skipped`となり、終了コードは`0`になる。
 
 suite内の関数名・ケース名はユーザー入力をそのまま1行へ表示するため、名前に改行文字（`\n`、`\r`）を含む場合はsuite構成エラーにする。タブなど他の文字への追加制限は設けない。
 
@@ -508,7 +524,7 @@ pub enum TestInput {
 ### `README.md`、`README-ja.md`
 
 - コマンド一覧へsuite形式を追加する。
-- suite JSON例、文字列とインラインJSONの判定、相対パス基準、case単位の`kvs`/`now_ms`を説明する。
+- suite JSON例、文字列とインラインJSONの判定、相対パス基準、case単位の`kvs`/`now_ms`/`skip`を説明する。
 - GitHub Actions例は既存単発例を維持し、suite利用例を追加する。置換はしない。
 
 ## テスト計画
@@ -532,7 +548,7 @@ pub enum TestInput {
 ### 3. 複数関数・複数ケース
 
 - 2関数以上、各2ケース以上のsuiteを実行し、全PASS行がJSON定義順に出る。
-- summaryが正しいpass/fail件数を表示する。
+- summaryが正しいpass/fail/skipped件数を表示する。
 - 全成功時の終了コードが`0`になる。
 
 ### 4. ファイル入力とインライン入力
@@ -555,7 +571,17 @@ pub enum TestInput {
 - suiteを置いたディレクトリとは異なるcurrent working directoryからCLIを起動し、suite内のfunction/event/expected/kvs相対パスがsuiteの親基準で解決される。
 - suite内の絶対パスもそのまま動作する。
 
-### 7. Suite構造エラー
+### 7. Skip
+
+- `skip`省略時と`skip: false`のケースが通常どおり実行される。
+- `skip: true`のケースでevent validation、JavaScript実行、expected比較が行われず、`SKIP: <function> / <case>`が出る。
+- skipケースが失敗件数へ入らず、他に失敗がなければ終了コード`0`になる。
+- 全ケースskipのsuiteが終了コード`0`となり、互換性違反を持つfunctionでも互換性診断を出さない。
+- skipケースの存在しないevent/expected/KVSファイル、不正JSON、不正KVS fixtureは事前読み込みエラーとなり、終了コード`2`になる。
+- `skip`にboolean以外を指定すると終了コード`2`になる。
+- 互換性違反の関数にskipケースと通常ケースを置き、skipケースはskipped、通常ケースだけがfailedになる。
+
+### 8. Suite構造エラー
 
 以下が終了コード`2`になり、1件もPASSを出さないことを確認する。
 
@@ -573,7 +599,7 @@ pub enum TestInput {
 
 後半のfunction/caseに不正な参照を置き、前半ケースのPASSも出ないことで事前読み込みを確認する。
 
-### 8. テスト失敗の継続
+### 9. テスト失敗の継続
 
 - 最初のケースをexpected mismatch、次のケースを成功にして、後者のPASSが出ることを確認する。
 - event validation failureの後も次ケースが実行される。
@@ -581,12 +607,12 @@ pub enum TestInput {
 - 1件でも失敗すれば最終終了コードが`1`になる。
 - failure label、既存の差分詳細、summary件数を確認する。
 
-### 9. 関数互換性エラー
+### 10. 関数互換性エラー
 
 - 互換性違反の関数に2ケースを定義し、両方が失敗件数に入る。
 - その後に定義した正常な関数のケースは実行される。
 - `CFFxxx`診断がfailure messageに含まれる。
-- summaryのpass+failが宣言された総ケース数と一致する。
+- summaryのpass+fail+skippedが宣言された総ケース数と一致する。
 
 ## 実装順序
 
@@ -596,7 +622,7 @@ pub enum TestInput {
 4. KVS検証を`KvsFixture::from_value`へ分離し、既存KVSテストとインラインKVSテストを通す。
 5. `src/app.rs`の単発実行部分をhelperへ分離し、単発CLIの出力・終了コードが不変であることを確認する。
 6. suiteの逐次実行、失敗集約、出力を実装する。
-7. 複数関数、複数ケース、KVS/時刻のcase分離、継続実行、相対パス、全エラーケースのテストを追加する。
+7. 複数関数、複数ケース、KVS/時刻のcase分離、skip、継続実行、相対パス、全エラーケースのテストを追加する。
 8. `README.md`と`README-ja.md`を更新する。
 9. formatter、unit test、CLI統合テスト、lintを実行する。
 
@@ -619,10 +645,11 @@ cargo test --locked --test cli suite
 - `cff-test test --suite <SUITE>`で複数関数・複数ケースを定義順に実行できる。
 - event、expected、KVSのそれぞれでファイル参照とインラインJSONを使用できる。
 - KVSと`now_ms`がcase単位で完全に分離される。
+- `skip: true`のcaseが実行されず、skipped件数として報告され、suiteの成否へ影響しない。
 - suite相対パスの基準がsuiteファイルの親ディレクトリになる。
 - suite入力エラーでは実行前に終了コード`2`、ケース失敗では残りを実行して終了コード`1`になる。
 - 関数の互換性検査は関数ごとに1回だけ行われる。
-- 出力とsummaryが本計画の形式に一致する。
+- 出力とpass/fail/skipped summaryが本計画の形式に一致する。
 - 既存の単発CLIが後方互換である。
 - READMEの日英両方に新しい使い方が記載される。
 - `cargo fmt --all -- --check`、`cargo test --locked`、`cargo clippy --locked --all-targets -- -D warnings`がすべて成功する。
